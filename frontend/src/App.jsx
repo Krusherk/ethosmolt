@@ -3,11 +3,11 @@ import { ethers } from 'ethers'
 import { submitRegistration, watchRegistration } from './firebase'
 import './index.css'
 
-const RPC_URL = "https://testnet-rpc.monad.xyz"
+const RPC_URL = "https://rpc.monad.xyz"
 const CONTRACTS = {
-  profile: "0xb23b80DDe8DefDceAc6A9C147215Ec315b210348",
-  score: "0x3B742bb4499a5f5B12d4340b081e7079B3D7c0Cc",
-  vouch: "0x88d7e4f3eEd4da3801400d95CbB51FE98C4bc64C"
+  profile: "0x9Eef1BC22D519bEF6E75E2d4AE88FeF1B3756A26",
+  score: "0x7459840CAe183a23e1C08C4CE26afc727455392D",
+  vouch: "0x4948DD966909747690F11a86332D8B01CDd81733"
 }
 
 const PROFILE_ABI = ["function totalAgents() view returns (uint256)", "function agents(uint256) view returns (bytes32, string, address, uint256)"]
