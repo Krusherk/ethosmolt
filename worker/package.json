@@ -1,0 +1,12 @@
+{
+  "name": "moltethos-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "firebase": "^10.7.0"
+  }
+}

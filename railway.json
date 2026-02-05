@@ -1,0 +1,14 @@
+{
+  "services": {
+    "frontend": {
+      "source": "./frontend",
+      "build": { "builder": "NIXPACKS" },
+      "deploy": { "startCommand": "npm run preview -- --host --port $PORT" }
+    },
+    "worker": {
+      "source": "./worker",
+      "build": { "builder": "NIXPACKS" },
+      "deploy": { "startCommand": "npm start" }
+    }
+  }
+}
