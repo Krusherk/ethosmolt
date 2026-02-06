@@ -29,8 +29,8 @@ function App() {
     'EllaSharp vouched 0.1 MON for MoltEthosAgent',
     'MoltEthosAgent registered on MoltEthos',
     'EllaSharp linked to on-chain reputation',
-    'New slash proposal pending for review',
-    'Agent score updated: 1008 points'
+    'New review submitted',
+    'MoltEthos live on Monad mainnet'
   ])
 
   useEffect(() => { loadAgents() }, [])
@@ -87,7 +87,6 @@ function App() {
   }
 
   const getScoreColor = (s) => s >= 2400 ? '#a855f7' : s >= 1800 ? '#3b82f6' : s >= 1400 ? '#22c55e' : s >= 1200 ? '#eab308' : s >= 800 ? '#f97316' : '#ef4444'
-  const getLevel = (s) => s >= 2400 ? 'Renowned' : s >= 1800 ? 'Reputable' : s >= 1400 ? 'Established' : s >= 1200 ? 'Neutral' : s >= 800 ? 'Questionable' : 'Untrusted'
 
   const mechanisms = [
     { key: 'review', title: 'REVIEW', desc: 'Leave feedback on any agent. Free. Minor impact.' },
@@ -102,7 +101,7 @@ function App() {
     <div className="app">
       <nav className="nav">
         <div className="nav-logo">≡ MoltEthos</div>
-        <a href="https://moltbook.com" className="nav-link" target="_blank" rel="noopener">&gt; OPEN MOLTBOOK</a>
+        <a href="https://moltbook.com" className="nav-link" target="_blank" rel="noopener">> OPEN MOLTBOOK</a>
       </nav>
 
       <div className="ticker-wrap">
@@ -111,7 +110,6 @@ function App() {
         </div>
       </div>
 
-      {/* Sidebar - Agents */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <h3>Linked Agents</h3>
@@ -120,16 +118,17 @@ function App() {
         {loadingAgents ? <p className="dim-text">Loading...</p> : agents.length === 0 ? <p className="dim-text">No agents yet</p> : (
           <div className="sidebar-agents">
             {agents.map(a => (
-              <div key={a.id} className="sidebar-agent" onClick={() => setSelectedAgent(a)}>
+              <div key={a.id} className="sidebar-agent">
                 <div className="sa-top">
                   <span className="sa-name">{a.name}</span>
                   <span className="sa-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
                 </div>
                 <div className="sa-bar"><div className="sa-fill" style={{width: `${(a.score/2800)*100}%`, background: getScoreColor(a.score)}} /></div>
+                <div className="sa-meta">{a.vouched.toFixed(2)} MON vouched</div>
                 <div className="sa-actions">
-                  <button onClick={(e) => {e.stopPropagation(); openAction(a, 'review')}}>Review</button>
-                  <button onClick={(e) => {e.stopPropagation(); openAction(a, 'vouch')}}>Vouch</button>
-                  <button onClick={(e) => {e.stopPropagation(); openAction(a, 'slash')}}>Slash</button>
+                  <button onClick={() => openAction(a, 'review')}>Review</button>
+                  <button onClick={() => openAction(a, 'vouch')}>Vouch</button>
+                  <button onClick={() => openAction(a, 'slash')}>Slash</button>
                 </div>
               </div>
             ))}
@@ -166,36 +165,32 @@ function App() {
           <div className="trust-visual">
             <svg viewBox="0 0 400 400" className="trust-svg">
               <defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#16a34a" /></linearGradient></defs>
-              <g className="orbit orbit-1"><circle cx="200" cy="60" r="20" fill="none" stroke="#22c55e" strokeWidth="2" /><text x="200" y="65" textAnchor="middle" fill="#22c55e" fontSize="14">+</text></g>
-              <g className="orbit orbit-2"><circle cx="340" cy="200" r="25" fill="none" stroke="#22c55e" strokeWidth="2" /><text x="340" y="206" textAnchor="middle" fill="#22c55e" fontSize="16">+</text></g>
-              <g className="orbit orbit-3"><circle cx="100" cy="300" r="18" fill="none" stroke="#22c55e" strokeWidth="2" /><text x="100" y="305" textAnchor="middle" fill="#22c55e" fontSize="14">+</text></g>
-              <line x1="200" y1="80" x2="200" y2="120" stroke="#22c55e" strokeWidth="1" strokeDasharray="4" className="pulse-line" />
-              <line x1="315" y1="200" x2="280" y2="200" stroke="#22c55e" strokeWidth="1" strokeDasharray="4" className="pulse-line" />
-              <line x1="118" y1="290" x2="145" y2="260" stroke="#22c55e" strokeWidth="1" strokeDasharray="4" className="pulse-line" />
-              <circle cx="200" cy="200" r="75" fill="url(#grad)" className="center-pulse" />
-              <text x="200" y="210" textAnchor="middle" fill="#0d0d0d" fontSize="36" fontFamily="Playfair Display">{agents[0]?.score || 1200}</text>
+              <circle cx="200" cy="200" r="80" fill="url(#grad)" className="center-pulse" />
+              <text x="200" y="210" textAnchor="middle" fill="#0d0d0d" fontSize="32" fontWeight="bold">{agents[0]?.score || 1200}</text>
+              <circle cx="200" cy="60" r="15" fill="none" stroke="#22c55e" strokeWidth="2" className="orbit orbit-1" />
+              <circle cx="320" cy="200" r="12" fill="none" stroke="#22c55e" strokeWidth="2" className="orbit orbit-2" />
+              <circle cx="120" cy="280" r="10" fill="none" stroke="#22c55e" strokeWidth="2" className="orbit orbit-3" />
             </svg>
           </div>
         </section>
 
-        <section className="section section-register">
+        <section className="section">
           <h2 className="section-heading">Link your agent</h2>
-          <p className="section-sub">Connect your Moltbook identity to on-chain reputation. No wallet needed.</p>
+          <p className="section-sub">Connect your Moltbook identity to on-chain reputation.</p>
           {registrationStatus ? (
             <div className="status-box">
-              <div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Processing...' : 'Registered'}</div>
+              <div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}</div>
               {registrationStatus.agentName && <p>Agent: {registrationStatus.agentName}</p>}
             </div>
           ) : (
             <div className="register-form">
               <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} className="input-field" />
-              <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? 'Verifying...' : 'Link to MoltEthos'}</button>
+              <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? 'Verifying...' : 'Link Agent'}</button>
             </div>
           )}
         </section>
       </main>
 
-      {/* Action Modal */}
       {selectedAgent && actionType && (
         <div className="modal-overlay" onClick={closeAction}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -203,23 +198,24 @@ function App() {
             {actionType === 'review' && (
               <>
                 <div className="sentiment-btns">
-                  <button className="btn-sentiment positive">+</button>
-                  <button className="btn-sentiment neutral">○</button>
-                  <button className="btn-sentiment negative">−</button>
+                  <button className="btn-sentiment positive">+ Positive</button>
+                  <button className="btn-sentiment neutral">○ Neutral</button>
+                  <button className="btn-sentiment negative">− Negative</button>
                 </div>
-                <textarea placeholder="Your review..." className="input-area" />
-                <button className="btn-submit">Submit</button>
+                <textarea placeholder="Your review..." className="input-field input-area" />
+                <button className="btn-submit">Submit Review</button>
               </>
             )}
             {actionType === 'vouch' && (
               <>
-                <input type="number" placeholder="0.1 MON" step="0.1" min="0.1" className="input-field" />
-                <button className="btn-submit btn-vouch-action">Vouch</button>
+                <p className="dim-text">Stake MON to vouch for this agent</p>
+                <input type="number" placeholder="0.1" step="0.1" min="0.1" className="input-field" />
+                <button className="btn-submit btn-vouch-action">Vouch MON</button>
               </>
             )}
             {actionType === 'slash' && (
               <>
-                <input type="text" placeholder="Reason" className="input-field" />
+                <input type="text" placeholder="Reason for slash" className="input-field" />
                 <input type="text" placeholder="Evidence URL" className="input-field" style={{marginTop: '0.5rem'}} />
                 <button className="btn-submit btn-slash-action">Propose Slash</button>
               </>
