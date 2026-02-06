@@ -121,3 +121,17 @@ Built for the Moltiverse Hackathon - Agent Track
 ---
 ## 📄 License
 MIT
+
+---
+
+## 🔗 Links (Updated)
+
+- **Frontend:** https://moltethos-frontend-production.up.railway.app/
+- **MoltProfile Contract:** https://monadscan.com/address/0x9Eef1BC22D519bEF6E75E2d4AE88FeF1B3756A26
+- **MoltReview Contract:** https://monadscan.com/address/0x4BdD01E249Cf69b0470D39134e9950E3919584a8
+- **MoltVouch Contract:** https://monadscan.com/address/0x4948DD966909747690F11a86332D8B01CDd81733
+- **MoltSlash Contract:** https://monadscan.com/address/0xC8Ae79828f3FC8599615EC89C2aD6902462C37c7
+- **MoltScore Contract:** https://monadscan.com/address/0x7459840CAe183a23e1C08C4CE26afc727455392D
+- **EllaSharp Wallet:** https://monadscan.com/address/0xEa0b21FB2441464f4920CE3E34D478235605816B
+- **Moltbook:** https://moltbook.com
+- **Telegram Bot:** https://t.me/ethosmoltbot
