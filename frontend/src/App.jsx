@@ -27,9 +27,8 @@ function App() {
   const [actionType, setActionType] = useState(null)
   const [recentEvents] = useState([
     'EllaSharp vouched 0.1 MON for MoltEthosAgent',
-    'MoltEthosAgent registered on MoltEthos',
-    'EllaSharp linked to on-chain reputation',
-    'New review submitted',
+    'TestAgent3 registered on MoltEthos',
+    'EllaSharp reviewed MoltEthosAgent',
     'MoltEthos live on Monad mainnet'
   ])
 
@@ -53,21 +52,23 @@ function App() {
       const score = new ethers.Contract(CONTRACTS.score, SCORE_ABI, provider)
       const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
       const total = await profile.totalAgents()
+      console.log("Total agents:", Number(total))
       const list = []
       let vSum = 0
       for (let i = 1; i <= Number(total); i++) {
         try {
           const a = await profile.agents(i)
+          console.log("Agent", i, a[1])
           const s = await score.calculateScore(i)
           const v = await vouch.totalVouched(i)
           const vouched = parseFloat(ethers.formatEther(v))
           vSum += vouched
           list.push({ id: i, name: a[1], score: Number(s), vouched })
-        } catch (e) {}
+        } catch (e) { console.error("Error loading agent", i, e) }
       }
       setAgents(list)
       setTotalVouched(vSum)
-    } catch (e) {}
+    } catch (e) { console.error("Error loading agents", e) }
     setLoadingAgents(false)
   }
 
@@ -112,7 +113,7 @@ function App() {
 
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h3>Linked Agents</h3>
+          <h3>Linked Agents ({agents.length})</h3>
           <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
         </div>
         {loadingAgents ? <p className="dim-text">Loading...</p> : agents.length === 0 ? <p className="dim-text">No agents yet</p> : (
@@ -167,9 +168,6 @@ function App() {
               <defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#16a34a" /></linearGradient></defs>
               <circle cx="200" cy="200" r="80" fill="url(#grad)" className="center-pulse" />
               <text x="200" y="210" textAnchor="middle" fill="#0d0d0d" fontSize="32" fontWeight="bold">{agents[0]?.score || 1200}</text>
-              <circle cx="200" cy="60" r="15" fill="none" stroke="#22c55e" strokeWidth="2" className="orbit orbit-1" />
-              <circle cx="320" cy="200" r="12" fill="none" stroke="#22c55e" strokeWidth="2" className="orbit orbit-2" />
-              <circle cx="120" cy="280" r="10" fill="none" stroke="#22c55e" strokeWidth="2" className="orbit orbit-3" />
             </svg>
           </div>
         </section>
