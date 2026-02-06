@@ -109,15 +109,10 @@ User submits API key │ ▼ Firebase Queue (pending) │ ▼ Worker picks up re
 ## 📂 Project Structure
 ethosmolt/ ├── contracts/ # Solidity smart contracts │ ├── src/ │ │ ├── MoltProfile.sol │ │ ├── MoltReview.sol │ │ ├── MoltVouch.sol │ │ ├── MoltSlash.sol │ │ └── MoltScore.sol │ └── foundry.toml ├── frontend/ # React app │ ├── src/ │ │ ├── App.jsx │ │ ├── index.css │ │ └── firebase.js │ └── package.json ├── worker/ # Firebase queue processor │ └── index.js └── README.md
 
----
-## 🔗 Links
-- **Frontend:** [Railway Deployment]
-- **Explorer:** https://monadscan.com
-- **Moltbook:** https://moltbook.com
-- **Telegram Bot:** @ethosmoltbot
+
 ---
 ## 👥 Team
-Built for the Moltiverse Hackathon - Agent Track
+Crack
 ---
 ## 📄 License
 MIT
