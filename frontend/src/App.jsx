@@ -57,12 +57,14 @@ function App() {
       for (let i = 1; i <= Number(total); i++) {
         try {
           const a = await profile.agents(i)
-          const s = await score.calculateScore(i)
-          const v = await vouch.totalVouched(i)
+          let s = 1200 // default score
+          let v = 0n
+          try { s = Number(await score.calculateScore(i)) } catch(e) { s = 1200 }
+          try { v = await vouch.totalVouched(i) } catch(e) { v = 0n }
           const vouched = parseFloat(ethers.formatEther(v))
           vSum += vouched
-          list.push({ id: i, name: a[1], score: Number(s), vouched })
-        } catch (e) { console.error(e) }
+          list.push({ id: i, name: a[1], score: s, vouched })
+        } catch (e) { console.error("Agent", i, e) }
       }
       setAgents(list)
       setTotalVouched(vSum)
