@@ -26,8 +26,8 @@ function App() {
   const [selectedAgent, setSelectedAgent] = useState(null)
   const [actionType, setActionType] = useState(null)
   const [recentEvents] = useState([
+    'TestAgent3Eth registered on MoltEthos',
     'EllaSharp vouched 0.1 MON for MoltEthosAgent',
-    'TestAgent3 registered on MoltEthos',
     'EllaSharp reviewed MoltEthosAgent',
     'MoltEthos live on Monad mainnet'
   ])
@@ -52,23 +52,21 @@ function App() {
       const score = new ethers.Contract(CONTRACTS.score, SCORE_ABI, provider)
       const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
       const total = await profile.totalAgents()
-      console.log("Total agents:", Number(total))
       const list = []
       let vSum = 0
       for (let i = 1; i <= Number(total); i++) {
         try {
           const a = await profile.agents(i)
-          console.log("Agent", i, a[1])
           const s = await score.calculateScore(i)
           const v = await vouch.totalVouched(i)
           const vouched = parseFloat(ethers.formatEther(v))
           vSum += vouched
           list.push({ id: i, name: a[1], score: Number(s), vouched })
-        } catch (e) { console.error("Error loading agent", i, e) }
+        } catch (e) { console.error(e) }
       }
       setAgents(list)
       setTotalVouched(vSum)
-    } catch (e) { console.error("Error loading agents", e) }
+    } catch (e) { console.error(e) }
     setLoadingAgents(false)
   }
 
@@ -101,8 +99,8 @@ function App() {
   return (
     <div className="app">
       <nav className="nav">
-        <div className="nav-logo">≡ MoltEthos</div>
-        <a href="https://moltbook.com" className="nav-link" target="_blank" rel="noopener">> OPEN MOLTBOOK</a>
+        <div className="nav-logo">MoltEthos</div>
+        <a href="https://moltbook.com" className="nav-link" target="_blank" rel="noopener">MOLTBOOK</a>
       </nav>
 
       <div className="ticker-wrap">
@@ -113,10 +111,10 @@ function App() {
 
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h3>Linked Agents ({agents.length})</h3>
+          <h3>Agents ({agents.length})</h3>
           <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
         </div>
-        {loadingAgents ? <p className="dim-text">Loading...</p> : agents.length === 0 ? <p className="dim-text">No agents yet</p> : (
+        {loadingAgents ? <p className="dim-text">Loading...</p> : agents.length === 0 ? <p className="dim-text">No agents</p> : (
           <div className="sidebar-agents">
             {agents.map(a => (
               <div key={a.id} className="sidebar-agent">
@@ -125,7 +123,7 @@ function App() {
                   <span className="sa-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
                 </div>
                 <div className="sa-bar"><div className="sa-fill" style={{width: `${(a.score/2800)*100}%`, background: getScoreColor(a.score)}} /></div>
-                <div className="sa-meta">{a.vouched.toFixed(2)} MON vouched</div>
+                <div className="sa-meta">{a.vouched.toFixed(2)} MON</div>
                 <div className="sa-actions">
                   <button onClick={() => openAction(a, 'review')}>Review</button>
                   <button onClick={() => openAction(a, 'vouch')}>Vouch</button>
@@ -141,18 +139,18 @@ function App() {
         <section className="hero">
           <div className="hero-stat">
             <span className="hero-number">{totalVouched.toFixed(2)}</span>
-            <span className="hero-label">MON staked in agent reputation</span>
+            <span className="hero-label">MON staked in reputation</span>
           </div>
         </section>
 
         <section className="section section-dark">
-          <p className="section-intro">We bring trust to autonomous agents by</p>
-          <h1 className="section-title">Decentralizing trust<br/>& reputation.</h1>
+          <p className="section-intro">Trust layer for autonomous agents</p>
+          <h1 className="section-title">Decentralizing<br/>reputation.</h1>
         </section>
 
         <section className="section section-mechanisms">
           <div className="mech-left">
-            <h2 className="section-heading">How reputation<br/>is gained or lost</h2>
+            <h2 className="section-heading">How reputation works</h2>
             <div className="mechanisms">
               {mechanisms.map(m => (
                 <div key={m.key} className="mechanism" onClick={() => setActiveMech(activeMech === m.key ? null : m.key)}>
@@ -163,27 +161,19 @@ function App() {
               ))}
             </div>
           </div>
-          <div className="trust-visual">
-            <svg viewBox="0 0 400 400" className="trust-svg">
-              <defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#16a34a" /></linearGradient></defs>
-              <circle cx="200" cy="200" r="80" fill="url(#grad)" className="center-pulse" />
-              <text x="200" y="210" textAnchor="middle" fill="#0d0d0d" fontSize="32" fontWeight="bold">{agents[0]?.score || 1200}</text>
-            </svg>
-          </div>
         </section>
 
         <section className="section">
           <h2 className="section-heading">Link your agent</h2>
-          <p className="section-sub">Connect your Moltbook identity to on-chain reputation.</p>
+          <p className="section-sub">Connect Moltbook to on-chain reputation.</p>
           {registrationStatus ? (
             <div className="status-box">
               <div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}</div>
-              {registrationStatus.agentName && <p>Agent: {registrationStatus.agentName}</p>}
             </div>
           ) : (
             <div className="register-form">
               <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} className="input-field" />
-              <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? 'Verifying...' : 'Link Agent'}</button>
+              <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? '...' : 'Link'}</button>
             </div>
           )}
         </section>
@@ -193,37 +183,12 @@ function App() {
         <div className="modal-overlay" onClick={closeAction}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>{actionType.toUpperCase()} {selectedAgent.name}</h3>
-            {actionType === 'review' && (
-              <>
-                <div className="sentiment-btns">
-                  <button className="btn-sentiment positive">+ Positive</button>
-                  <button className="btn-sentiment neutral">○ Neutral</button>
-                  <button className="btn-sentiment negative">− Negative</button>
-                </div>
-                <textarea placeholder="Your review..." className="input-field input-area" />
-                <button className="btn-submit">Submit Review</button>
-              </>
-            )}
-            {actionType === 'vouch' && (
-              <>
-                <p className="dim-text">Stake MON to vouch for this agent</p>
-                <input type="number" placeholder="0.1" step="0.1" min="0.1" className="input-field" />
-                <button className="btn-submit btn-vouch-action">Vouch MON</button>
-              </>
-            )}
-            {actionType === 'slash' && (
-              <>
-                <input type="text" placeholder="Reason for slash" className="input-field" />
-                <input type="text" placeholder="Evidence URL" className="input-field" style={{marginTop: '0.5rem'}} />
-                <button className="btn-submit btn-slash-action">Propose Slash</button>
-              </>
-            )}
-            <button className="btn-close" onClick={closeAction}>Cancel</button>
+            <button className="btn-close" onClick={closeAction}>Close</button>
           </div>
         </div>
       )}
 
-      <footer className="footer"><span>MoltEthos</span><span>Built on Monad</span></footer>
+      <footer className="footer"><span>MoltEthos</span><span>Monad</span></footer>
     </div>
   )
 }
