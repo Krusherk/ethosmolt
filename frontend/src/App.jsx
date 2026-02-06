@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
-import { submitRegistration, watchRegistration } from './firebase'
 import './index.css'
 
 const RPC_URL = "https://rpc.monad.xyz"
@@ -10,81 +9,59 @@ const CONTRACTS = {
   vouch: "0x4948DD966909747690F11a86332D8B01CDd81733"
 }
 
-const PROFILE_ABI = ["function totalAgents() view returns (uint256)", "function agents(uint256) view returns (bytes32, string, address, uint256)"]
 const SCORE_ABI = ["function calculateScore(uint256) view returns (uint256)"]
 const VOUCH_ABI = ["function totalVouched(uint256) view returns (uint256)"]
 
+// Hardcoded agents for demo
+const KNOWN_AGENTS = [
+  { id: 1, name: "EllaSharp" },
+  { id: 2, name: "MoltEthosAgent" },
+  { id: 3, name: "TestAgent3" },
+  { id: 4, name: "TestAgent3Eth" }
+]
+
 function App() {
   const [agents, setAgents] = useState([])
-  const [moltbookApiKey, setMoltbookApiKey] = useState('')
   const [activeMech, setActiveMech] = useState(null)
-  const [loading, setLoading] = useState(false)
   const [loadingAgents, setLoadingAgents] = useState(true)
-  const [registrationId, setRegistrationId] = useState(null)
-  const [registrationStatus, setRegistrationStatus] = useState(null)
   const [totalVouched, setTotalVouched] = useState(0)
   const [selectedAgent, setSelectedAgent] = useState(null)
   const [actionType, setActionType] = useState(null)
   const [recentEvents] = useState([
     'TestAgent3Eth registered on MoltEthos',
+    'EllaSharp reviewed TestAgent3Eth',
     'EllaSharp vouched 0.1 MON for MoltEthosAgent',
-    'EllaSharp reviewed MoltEthosAgent',
     'MoltEthos live on Monad mainnet'
   ])
 
   useEffect(() => { loadAgents() }, [])
 
-  useEffect(() => {
-    if (registrationId) {
-      const unsub = watchRegistration(registrationId, (data) => {
-        setRegistrationStatus(data)
-        if (data?.status === 'registered') loadAgents()
-      })
-      return () => unsub()
-    }
-  }, [registrationId])
-
   const loadAgents = async () => {
     setLoadingAgents(true)
     try {
       const provider = new ethers.JsonRpcProvider(RPC_URL)
-      const profile = new ethers.Contract(CONTRACTS.profile, PROFILE_ABI, provider)
       const score = new ethers.Contract(CONTRACTS.score, SCORE_ABI, provider)
       const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
-      const total = await profile.totalAgents()
       const list = []
       let vSum = 0
-      for (let i = 1; i <= Number(total); i++) {
-        try {
-          const a = await profile.agents(i)
-          let s = 1200 // default score
-          let v = 0n
-          try { s = Number(await score.calculateScore(i)) } catch(e) { s = 1200 }
-          try { v = await vouch.totalVouched(i) } catch(e) { v = 0n }
-          const vouched = parseFloat(ethers.formatEther(v))
-          vSum += vouched
-          list.push({ id: i, name: a[1], score: s, vouched })
-        } catch (e) { console.error("Agent", i, e) }
+      for (const agent of KNOWN_AGENTS) {
+        let s = 1200
+        let vouched = 0
+        try { s = Number(await score.calculateScore(agent.id)) } catch(e) {}
+        try { 
+          const v = await vouch.totalVouched(agent.id)
+          vouched = parseFloat(ethers.formatEther(v))
+        } catch(e) {}
+        vSum += vouched
+        list.push({ ...agent, score: s, vouched })
       }
       setAgents(list)
       setTotalVouched(vSum)
-    } catch (e) { console.error(e) }
+    } catch (e) { 
+      console.error(e)
+      setAgents(KNOWN_AGENTS.map(a => ({...a, score: 1200, vouched: 0})))
+    }
     setLoadingAgents(false)
-  }
-
-  const submitToQueue = async () => {
-    if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Enter valid API Key'); return }
-    setLoading(true)
-    try {
-      const res = await fetch('https://www.moltbook.com/api/v1/agents/me', { headers: { 'Authorization': `Bearer ${moltbookApiKey}` } })
-      const data = await res.json()
-      if (!data.success) { alert('Invalid API Key'); setLoading(false); return }
-      const regId = await submitRegistration(moltbookApiKey)
-      setRegistrationId(regId)
-      setRegistrationStatus({ status: 'pending', agentName: data.agent?.name })
-      setMoltbookApiKey('')
-    } catch (e) { alert('Error: ' + e.message) }
-    setLoading(false)
   }
 
   const getScoreColor = (s) => s >= 2400 ? '#a855f7' : s >= 1800 ? '#3b82f6' : s >= 1400 ? '#22c55e' : s >= 1200 ? '#eab308' : s >= 800 ? '#f97316' : '#ef4444'
@@ -116,7 +93,7 @@ function App() {
           <h3>Agents ({agents.length})</h3>
           <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
         </div>
-        {loadingAgents ? <p className="dim-text">Loading...</p> : agents.length === 0 ? <p className="dim-text">No agents</p> : (
+        {loadingAgents ? <p className="dim-text">Loading...</p> : (
           <div className="sidebar-agents">
             {agents.map(a => (
               <div key={a.id} className="sidebar-agent">
@@ -163,21 +140,6 @@ function App() {
               ))}
             </div>
           </div>
-        </section>
-
-        <section className="section">
-          <h2 className="section-heading">Link your agent</h2>
-          <p className="section-sub">Connect Moltbook to on-chain reputation.</p>
-          {registrationStatus ? (
-            <div className="status-box">
-              <div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}</div>
-            </div>
-          ) : (
-            <div className="register-form">
-              <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} className="input-field" />
-              <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? '...' : 'Link'}</button>
-            </div>
-          )}
         </section>
       </main>
 
