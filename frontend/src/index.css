@@ -304,3 +304,34 @@ body {
   .sidebar { display: none; }
   .main-content { margin-left: 0; }
 }
+
+/* Slash Proposals */
+.slash-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.slash-proposal {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.sp-target {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.sp-stake {
+  color: #888;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.sp-status {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}

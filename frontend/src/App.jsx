@@ -3,16 +3,10 @@ import { ethers } from 'ethers'
 import './index.css'
 
 const RPC_URL = "https://rpc.monad.xyz"
-const CONTRACTS = {
-  profile: "0x9Eef1BC22D519bEF6E75E2d4AE88FeF1B3756A26",
-  score: "0x7459840CAe183a23e1C08C4CE26afc727455392D",
-  vouch: "0x4948DD966909747690F11a86332D8B01CDd81733"
-}
-
 const SCORE_ABI = ["function calculateScore(uint256) view returns (uint256)"]
 const VOUCH_ABI = ["function totalVouched(uint256) view returns (uint256)"]
+const SLASH_ABI = ["function proposalCount() view returns (uint256)", "function proposals(uint256) view returns (uint256 targetId, address proposer, uint256 stakeAmount, uint256 createdAt, bool executed, bool passed)"]
 
-// Hardcoded agents for demo
 const KNOWN_AGENTS = [
   { id: 1, name: "EllaSharp" },
   { id: 2, name: "MoltEthosAgent" },
@@ -21,47 +15,64 @@ const KNOWN_AGENTS = [
 ]
 
 function App() {
-  const [agents, setAgents] = useState([])
+  const [agents, setAgents] = useState(KNOWN_AGENTS.map(a => ({...a, score: 1200, vouched: 0})))
+  const [slashProposals, setSlashProposals] = useState([])
   const [activeMech, setActiveMech] = useState(null)
   const [loadingAgents, setLoadingAgents] = useState(true)
-  const [totalVouched, setTotalVouched] = useState(0)
+  const [totalVouched, setTotalVouched] = useState(0.1)
   const [selectedAgent, setSelectedAgent] = useState(null)
   const [actionType, setActionType] = useState(null)
   const [recentEvents] = useState([
-    'TestAgent3Eth registered on MoltEthos',
-    'EllaSharp reviewed TestAgent3Eth',
+    'Slash proposal on TestAgent3Eth',
+    'EllaSharp reviewed agents',
     'EllaSharp vouched 0.1 MON for MoltEthosAgent',
     'MoltEthos live on Monad mainnet'
   ])
 
-  useEffect(() => { loadAgents() }, [])
+  useEffect(() => { loadAgents(); loadSlashProposals() }, [])
 
   const loadAgents = async () => {
     setLoadingAgents(true)
+    const provider = new ethers.JsonRpcProvider(RPC_URL)
+    const score = new ethers.Contract("0x7459840CAe183a23e1C08C4CE26afc727455392D", SCORE_ABI, provider)
+    const vouch = new ethers.Contract("0x4948DD966909747690F11a86332D8B01CDd81733", VOUCH_ABI, provider)
+    const list = []
+    let vSum = 0
+    for (const agent of KNOWN_AGENTS) {
+      let s = 1200
+      let vouched = 0
+      try { s = Number(await score.calculateScore(agent.id)) } catch(e) {}
+      try { vouched = parseFloat(ethers.formatEther(await vouch.totalVouched(agent.id))) } catch(e) {}
+      vSum += vouched
+      list.push({ ...agent, score: s, vouched })
+    }
+    setAgents(list)
+    setTotalVouched(vSum)
+    setLoadingAgents(false)
+  }
+
+  const loadSlashProposals = async () => {
     try {
       const provider = new ethers.JsonRpcProvider(RPC_URL)
-      const score = new ethers.Contract(CONTRACTS.score, SCORE_ABI, provider)
-      const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
-      const list = []
-      let vSum = 0
-      for (const agent of KNOWN_AGENTS) {
-        let s = 1200
-        let vouched = 0
-        try { s = Number(await score.calculateScore(agent.id)) } catch(e) {}
-        try { 
-          const v = await vouch.totalVouched(agent.id)
-          vouched = parseFloat(ethers.formatEther(v))
+      const slash = new ethers.Contract("0xC8Ae79828f3FC8599615EC89C2aD6902462C37c7", SLASH_ABI, provider)
+      const count = await slash.proposalCount()
+      const proposals = []
+      for (let i = 1; i <= Number(count); i++) {
+        try {
+          const p = await slash.proposals(i)
+          const targetAgent = KNOWN_AGENTS.find(a => a.id === Number(p.targetId))
+          proposals.push({
+            id: i,
+            targetId: Number(p.targetId),
+            targetName: targetAgent?.name || `Agent ${p.targetId}`,
+            stake: parseFloat(ethers.formatEther(p.stakeAmount)),
+            executed: p.executed,
+            passed: p.passed
+          })
         } catch(e) {}
-        vSum += vouched
-        list.push({ ...agent, score: s, vouched })
       }
-      setAgents(list)
-      setTotalVouched(vSum)
-    } catch (e) { 
-      console.error(e)
-      setAgents(KNOWN_AGENTS.map(a => ({...a, score: 1200, vouched: 0})))
-    }
-    setLoadingAgents(false)
+      setSlashProposals(proposals)
+    } catch(e) { console.error(e) }
   }
 
   const getScoreColor = (s) => s >= 2400 ? '#a855f7' : s >= 1800 ? '#3b82f6' : s >= 1400 ? '#22c55e' : s >= 1200 ? '#eab308' : s >= 800 ? '#f97316' : '#ef4444'
@@ -71,9 +82,6 @@ function App() {
     { key: 'vouch', title: 'VOUCH', desc: 'Stake MON to vouch. Major impact on score.' },
     { key: 'slash', title: 'SLASH', desc: '48h vote to penalize bad actors.' }
   ]
-
-  const openAction = (agent, type) => { setSelectedAgent(agent); setActionType(type) }
-  const closeAction = () => { setSelectedAgent(null); setActionType(null) }
 
   return (
     <div className="app">
@@ -91,26 +99,41 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <h3>Agents ({agents.length})</h3>
-          <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
+          <button onClick={() => {loadAgents(); loadSlashProposals()}} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
         </div>
-        {loadingAgents ? <p className="dim-text">Loading...</p> : (
-          <div className="sidebar-agents">
-            {agents.map(a => (
-              <div key={a.id} className="sidebar-agent">
-                <div className="sa-top">
-                  <span className="sa-name">{a.name}</span>
-                  <span className="sa-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
-                </div>
-                <div className="sa-bar"><div className="sa-fill" style={{width: `${(a.score/2800)*100}%`, background: getScoreColor(a.score)}} /></div>
-                <div className="sa-meta">{a.vouched.toFixed(2)} MON</div>
-                <div className="sa-actions">
-                  <button onClick={() => openAction(a, 'review')}>Review</button>
-                  <button onClick={() => openAction(a, 'vouch')}>Vouch</button>
-                  <button onClick={() => openAction(a, 'slash')}>Slash</button>
-                </div>
+        <div className="sidebar-agents">
+          {agents.map(a => (
+            <div key={a.id} className="sidebar-agent">
+              <div className="sa-top">
+                <span className="sa-name">{a.name}</span>
+                <span className="sa-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
               </div>
-            ))}
-          </div>
+              <div className="sa-bar"><div className="sa-fill" style={{width: `${(a.score/2800)*100}%`, background: getScoreColor(a.score)}} /></div>
+              <div className="sa-meta">{a.vouched.toFixed(2)} MON</div>
+              <div className="sa-actions">
+                <button onClick={() => {setSelectedAgent(a); setActionType('review')}}>Review</button>
+                <button onClick={() => {setSelectedAgent(a); setActionType('vouch')}}>Vouch</button>
+                <button onClick={() => {setSelectedAgent(a); setActionType('slash')}}>Slash</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {slashProposals.length > 0 && (
+          <>
+            <div className="sidebar-header" style={{marginTop: '1.5rem'}}>
+              <h3>⚠️ Slash Proposals</h3>
+            </div>
+            <div className="slash-proposals">
+              {slashProposals.map(p => (
+                <div key={p.id} className="slash-proposal">
+                  <div className="sp-target">Against: {p.targetName}</div>
+                  <div className="sp-stake">{p.stake.toFixed(2)} MON staked</div>
+                  <div className="sp-status">{p.executed ? (p.passed ? '✅ Passed' : '❌ Rejected') : '⏳ Voting'}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </aside>
 
@@ -144,10 +167,10 @@ function App() {
       </main>
 
       {selectedAgent && actionType && (
-        <div className="modal-overlay" onClick={closeAction}>
+        <div className="modal-overlay" onClick={() => {setSelectedAgent(null); setActionType(null)}}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>{actionType.toUpperCase()} {selectedAgent.name}</h3>
-            <button className="btn-close" onClick={closeAction}>Close</button>
+            <button className="btn-close" onClick={() => {setSelectedAgent(null); setActionType(null)}}>Close</button>
           </div>
         </div>
       )}
