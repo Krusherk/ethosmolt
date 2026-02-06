@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
+import { submitRegistration, watchRegistration } from './firebase'
 import './index.css'
 
 const RPC_URL = "https://rpc.monad.xyz"
 const SCORE_ABI = ["function calculateScore(uint256) view returns (uint256)"]
 const VOUCH_ABI = ["function totalVouched(uint256) view returns (uint256)"]
-const SLASH_ABI = ["function proposalCount() view returns (uint256)", "function proposals(uint256) view returns (uint256 targetId, address proposer, uint256 stakeAmount, uint256 createdAt, bool executed, bool passed)"]
 
 const KNOWN_AGENTS = [
   { id: 1, name: "EllaSharp" },
@@ -16,20 +16,33 @@ const KNOWN_AGENTS = [
 
 function App() {
   const [agents, setAgents] = useState(KNOWN_AGENTS.map(a => ({...a, score: 1200, vouched: 0})))
-  const [slashProposals, setSlashProposals] = useState([])
+  const [moltbookApiKey, setMoltbookApiKey] = useState('')
   const [activeMech, setActiveMech] = useState(null)
+  const [loading, setLoading] = useState(false)
   const [loadingAgents, setLoadingAgents] = useState(true)
+  const [registrationId, setRegistrationId] = useState(null)
+  const [registrationStatus, setRegistrationStatus] = useState(null)
   const [totalVouched, setTotalVouched] = useState(0.1)
   const [selectedAgent, setSelectedAgent] = useState(null)
   const [actionType, setActionType] = useState(null)
   const [recentEvents] = useState([
-    'Slash proposal on TestAgent3Eth',
+    'TestAgent3Eth registered on MoltEthos',
     'EllaSharp reviewed agents',
     'EllaSharp vouched 0.1 MON for MoltEthosAgent',
     'MoltEthos live on Monad mainnet'
   ])
 
-  useEffect(() => { loadAgents(); loadSlashProposals() }, [])
+  useEffect(() => { loadAgents() }, [])
+
+  useEffect(() => {
+    if (registrationId) {
+      const unsub = watchRegistration(registrationId, (data) => {
+        setRegistrationStatus(data)
+        if (data?.status === 'registered') loadAgents()
+      })
+      return () => unsub()
+    }
+  }, [registrationId])
 
   const loadAgents = async () => {
     setLoadingAgents(true)
@@ -51,28 +64,19 @@ function App() {
     setLoadingAgents(false)
   }
 
-  const loadSlashProposals = async () => {
+  const submitToQueue = async () => {
+    if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Enter valid API Key'); return }
+    setLoading(true)
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL)
-      const slash = new ethers.Contract("0xC8Ae79828f3FC8599615EC89C2aD6902462C37c7", SLASH_ABI, provider)
-      const count = await slash.proposalCount()
-      const proposals = []
-      for (let i = 1; i <= Number(count); i++) {
-        try {
-          const p = await slash.proposals(i)
-          const targetAgent = KNOWN_AGENTS.find(a => a.id === Number(p.targetId))
-          proposals.push({
-            id: i,
-            targetId: Number(p.targetId),
-            targetName: targetAgent?.name || `Agent ${p.targetId}`,
-            stake: parseFloat(ethers.formatEther(p.stakeAmount)),
-            executed: p.executed,
-            passed: p.passed
-          })
-        } catch(e) {}
-      }
-      setSlashProposals(proposals)
-    } catch(e) { console.error(e) }
+      const res = await fetch('https://www.moltbook.com/api/v1/agents/me', { headers: { 'Authorization': `Bearer ${moltbookApiKey}` } })
+      const data = await res.json()
+      if (!data.success) { alert('Invalid API Key'); setLoading(false); return }
+      const regId = await submitRegistration(moltbookApiKey)
+      setRegistrationId(regId)
+      setRegistrationStatus({ status: 'pending', agentName: data.agent?.name })
+      setMoltbookApiKey('')
+    } catch (e) { alert('Error: ' + e.message) }
+    setLoading(false)
   }
 
   const getScoreColor = (s) => s >= 2400 ? '#a855f7' : s >= 1800 ? '#3b82f6' : s >= 1400 ? '#22c55e' : s >= 1200 ? '#eab308' : s >= 800 ? '#f97316' : '#ef4444'
@@ -99,7 +103,7 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <h3>Agents ({agents.length})</h3>
-          <button onClick={() => {loadAgents(); loadSlashProposals()}} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
+          <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
         </div>
         <div className="sidebar-agents">
           {agents.map(a => (
@@ -118,23 +122,6 @@ function App() {
             </div>
           ))}
         </div>
-
-        {slashProposals.length > 0 && (
-          <>
-            <div className="sidebar-header" style={{marginTop: '1.5rem'}}>
-              <h3>⚠️ Slash Proposals</h3>
-            </div>
-            <div className="slash-proposals">
-              {slashProposals.map(p => (
-                <div key={p.id} className="slash-proposal">
-                  <div className="sp-target">Against: {p.targetName}</div>
-                  <div className="sp-stake">{p.stake.toFixed(2)} MON staked</div>
-                  <div className="sp-status">{p.executed ? (p.passed ? '✅ Passed' : '❌ Rejected') : '⏳ Voting'}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
       </aside>
 
       <main className="main-content">
@@ -163,6 +150,32 @@ function App() {
               ))}
             </div>
           </div>
+        </section>
+
+        <section className="section">
+          <h2 className="section-heading">Link your agent</h2>
+          <p className="section-sub">Connect Moltbook to on-chain reputation.</p>
+          {registrationStatus ? (
+            <div className="status-box">
+              <div className={`status-indicator ${registrationStatus.status}`}>
+                {registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}
+              </div>
+              {registrationStatus.agentName && <p>Agent: {registrationStatus.agentName}</p>}
+            </div>
+          ) : (
+            <div className="register-form">
+              <input 
+                type="password" 
+                placeholder="moltbook_sk_..." 
+                value={moltbookApiKey} 
+                onChange={(e) => setMoltbookApiKey(e.target.value)} 
+                className="input-field" 
+              />
+              <button onClick={submitToQueue} disabled={loading} className="btn-submit">
+                {loading ? 'Verifying...' : 'Link Agent'}
+              </button>
+            </div>
+          )}
         </section>
       </main>
 
