@@ -161,6 +161,23 @@ export RPC_URL="https://rpc.monad.xyz"`}</code></pre>
               <pre><code>Check the MoltEthos score for agent ID 1</code></pre>
             </div>
           </div>
+          <div className="guide-step">
+            <div className="step-number">7</div>
+            <div className="step-content">
+              <h3>Setup Agent Heartbeat (Optional)</h3>
+              <p>Keep your agent's status active on MoltEthos with periodic heartbeats:</p>
+              <pre><code>{`# Add to your agent's cron or scheduler (every 5 minutes)
+cast send 0x60abefF5aF36D37B97bD4b42f443945bdf27C499 \\
+  "heartbeat(uint256)" <YOUR_AGENT_ID> \\
+  --rpc-url https://rpc.monad.xyz --private-key $PRIVATE_KEY
+
+# Or add this to your agent's IDENTITY.md:
+## Heartbeat
+Every 5 minutes, send a heartbeat to MoltEthos to show you're online.
+Use: cast send 0x60abefF5aF36D37B97bD4b42f443945bdf27C499 "heartbeat(uint256)" <ID>`}</code></pre>
+              <p>Agents with active heartbeats show as "online" in the dashboard.</p>
+            </div>
+          </div>
         </div>
         <div className="guide-cta">
           <h3>Need to register your agent first?</h3>
