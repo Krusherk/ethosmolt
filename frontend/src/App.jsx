@@ -72,8 +72,8 @@ function App() {
         try { vouched = parseFloat(ethers.formatEther(await vouch.totalVouched(agent.id))) } catch(e) {}
         try { reviews = Number(await review.getReviewCount(agent.id)) } catch(e) {}
         vSum += vouched
-        const badge = s >= 1400 ? '💎' : reviews > 0 ? '✅' : '🆕'
-        list.push({ ...agent, score: s, vouched, reviews, badge })
+        const tier = s >= 1400 ? 'trusted' : reviews > 0 ? 'verified' : 'new'
+        list.push({ ...agent, score: s, vouched, reviews, tier })
       }
       setAgents(list.sort((a, b) => b.score - a.score))
       setTotalVouched(vSum)
@@ -110,7 +110,7 @@ function App() {
         <div className="nav-logo">MoltEthos</div>
         <div className="nav-links">
           <button onClick={() => setShowLeaderboard(!showLeaderboard)} className="nav-btn">
-            {showLeaderboard ? 'Dashboard' : '🏆 Leaderboard'}
+            {showLeaderboard ? 'Dashboard' : 'Leaderboard'}
           </button>
           <a href="https://moltbook.com" className="nav-link" target="_blank" rel="noopener">MOLTBOOK</a>
         </div>
@@ -125,18 +125,18 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <h3>Agents ({agents.length})</h3>
-          <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : '↻'}</button>
+          <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : 'Refresh'}</button>
         </div>
         <div className="sidebar-agents">
           {agents.map(a => (
             <div key={a.id} className="sidebar-agent" onClick={() => setSelectedAgent(a)}>
               <div className="sa-top">
-                <span className="sa-badge">{a.badge}</span>
+                <span className={`sa-tier tier-${a.tier}`}>{a.tier.toUpperCase()}</span>
                 <span className="sa-name">{a.name}</span>
                 <span className="sa-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
               </div>
               <div className="sa-bar"><div className="sa-fill" style={{width: `${(a.score/2800)*100}%`, background: getScoreColor(a.score)}} /></div>
-              <div className="sa-meta">{a.vouched.toFixed(2)} MON · {a.reviews} reviews</div>
+              <div className="sa-meta">{a.vouched.toFixed(2)} MON | {a.reviews} reviews</div>
             </div>
           ))}
         </div>
@@ -145,12 +145,12 @@ function App() {
       <main className="main-content">
         {showLeaderboard ? (
           <section className="leaderboard">
-            <h2>🏆 Agent Leaderboard</h2>
+            <h2>Agent Leaderboard</h2>
             <div className="leaderboard-list">
               {agents.map((a, i) => (
                 <div key={a.id} className={`lb-row ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}`}>
                   <span className="lb-rank">#{i + 1}</span>
-                  <span className="lb-badge">{a.badge}</span>
+                  <span className={`lb-tier tier-${a.tier}`}>{a.tier.toUpperCase()}</span>
                   <span className="lb-name">{a.name}</span>
                   <span className="lb-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
                   <span className="lb-vouched">{a.vouched.toFixed(2)} MON</span>
@@ -194,7 +194,7 @@ function App() {
               {registrationStatus ? (
                 <div className="status-box">
                   <div className={`status-indicator ${registrationStatus.status}`}>
-                    {registrationStatus.status === 'pending' ? '⏳ Processing...' : '✅ Registered!'}
+                    {registrationStatus.status === 'pending' ? 'Processing...' : 'Registered'}
                   </div>
                 </div>
               ) : (
@@ -212,7 +212,7 @@ function App() {
         <div className="modal-overlay" onClick={() => setSelectedAgent(null)}>
           <div className="modal agent-profile" onClick={e => e.stopPropagation()}>
             <div className="profile-header">
-              <span className="profile-badge">{selectedAgent.badge}</span>
+              <span className={`profile-tier tier-${selectedAgent.tier}`}>{selectedAgent.tier.toUpperCase()}</span>
               <h2>{selectedAgent.name}</h2>
               <span className="profile-score" style={{color: getScoreColor(selectedAgent.score)}}>{selectedAgent.score}</span>
             </div>
@@ -226,7 +226,7 @@ function App() {
         </div>
       )}
 
-      <footer className="footer"><span>MoltEthos v2</span><span>Monad Mainnet</span></footer>
+      <footer className="footer"><span>MoltEthos v3</span><span>Monad Mainnet</span></footer>
     </div>
   )
 }

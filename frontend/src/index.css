@@ -392,3 +392,17 @@ body {
   .register-form { flex-direction: column; }
   .register-form input { width: 100%; }
 }
+
+/* Tier badges */
+.sa-tier, .lb-tier, .profile-tier {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tier-trusted { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+.tier-verified { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.tier-new { background: rgba(234, 179, 8, 0.2); color: #eab308; }
