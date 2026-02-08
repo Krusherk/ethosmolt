@@ -1,20 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.27;
 
-import "./IMoltProfile.sol";
-
-interface IMoltVouch {
-    function slash(uint256 targetId, uint256 amount) external;
-    function totalVouched(uint256 targetId) external view returns (uint256);
-}
+import {IMoltProfile} from "./IMoltProfile.sol";
 
 contract MoltSlash {
     struct Proposal {
-        uint256 proposerId;
         uint256 targetId;
+        address proposer;
+        uint256 stakeAmount;
         string reason;
         string evidence;
-        uint256 stake;
         uint256 createdAt;
         uint256 votesFor;
         uint256 votesAgainst;
@@ -23,20 +18,12 @@ contract MoltSlash {
     }
 
     IMoltProfile public immutable profile;
-    IMoltVouch public vouchContract;
-    
-    uint256 public constant VOTE_DURATION = 48 hours;
     uint256 public constant MIN_STAKE = 0.05 ether;
-    uint256 public constant PASS_THRESHOLD = 51; // 51%
+    uint256 public constant VOTING_PERIOD = 48 hours;
 
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(uint256 => bool)) public hasVoted;
-    
-    uint256 public totalProposals;
-
-    event ProposalCreated(uint256 indexed proposalId, uint256 indexed targetId, string reason);
-    event Voted(uint256 indexed proposalId, uint256 indexed voterId, bool support);
-    event ProposalExecuted(uint256 indexed proposalId, bool passed);
+    uint256 public proposalCount;
 
     error NotRegistered();
     error TargetNotRegistered();
@@ -45,56 +32,47 @@ contract MoltSlash {
     error VotingEnded();
     error VotingNotEnded();
     error AlreadyExecuted();
-    error CannotSlashSelf();
+
+    event ProposalCreated(uint256 indexed proposalId, uint256 indexed targetId, address proposer);
+    event Voted(uint256 indexed proposalId, uint256 indexed voterId, bool support);
+    event ProposalExecuted(uint256 indexed proposalId, bool passed);
 
     constructor(address _profile) {
         profile = IMoltProfile(_profile);
     }
 
-    function setVouchContract(address _vouch) external {
-        require(address(vouchContract) == address(0), "Already set");
-        vouchContract = IMoltVouch(_vouch);
-    }
-
-    function propose(uint256 proposerId, uint256 targetId, string calldata reason, string calldata evidence) external payable returns (uint256) {
-        if (profile.getOwner(proposerId) != msg.sender) revert NotRegistered();
+    function propose(uint256 proposerId, uint256 targetId, string calldata reason, string calldata evidence) external payable {
+        if (msg.sender != profile.getOwner(proposerId)) revert NotRegistered();
         if (profile.getOwner(targetId) == address(0)) revert TargetNotRegistered();
-        if (proposerId == targetId) revert CannotSlashSelf();
         if (msg.value < MIN_STAKE) revert InsufficientStake();
 
-        totalProposals++;
-        uint256 proposalId = totalProposals;
-
-        proposals[proposalId] = Proposal({
-            proposerId: proposerId,
+        proposalCount++;
+        proposals[proposalCount] = Proposal({
             targetId: targetId,
+            proposer: msg.sender,
+            stakeAmount: msg.value,
             reason: reason,
             evidence: evidence,
-            stake: msg.value,
             createdAt: block.timestamp,
-            votesFor: 0,
+            votesFor: 1,
             votesAgainst: 0,
             executed: false,
             passed: false
         });
 
-        emit ProposalCreated(proposalId, targetId, reason);
-        return proposalId;
+        hasVoted[proposalCount][proposerId] = true;
+        emit ProposalCreated(proposalCount, targetId, msg.sender);
     }
 
     function vote(uint256 proposalId, uint256 voterId, bool support) external {
         Proposal storage p = proposals[proposalId];
-        if (profile.getOwner(voterId) != msg.sender) revert NotRegistered();
-        if (block.timestamp > p.createdAt + VOTE_DURATION) revert VotingEnded();
+        if (msg.sender != profile.getOwner(voterId)) revert NotRegistered();
         if (hasVoted[proposalId][voterId]) revert AlreadyVoted();
+        if (block.timestamp > p.createdAt + VOTING_PERIOD) revert VotingEnded();
 
         hasVoted[proposalId][voterId] = true;
-
-        if (support) {
-            p.votesFor++;
-        } else {
-            p.votesAgainst++;
-        }
+        if (support) p.votesFor++;
+        else p.votesAgainst++;
 
         emit Voted(proposalId, voterId, support);
     }
@@ -102,38 +80,21 @@ contract MoltSlash {
     function execute(uint256 proposalId) external {
         Proposal storage p = proposals[proposalId];
         if (p.executed) revert AlreadyExecuted();
-        if (block.timestamp < p.createdAt + VOTE_DURATION) revert VotingNotEnded();
+        if (block.timestamp < p.createdAt + VOTING_PERIOD) revert VotingNotEnded();
 
         p.executed = true;
+        p.passed = p.votesFor > p.votesAgainst;
 
-        uint256 totalVotes = p.votesFor + p.votesAgainst;
-        if (totalVotes > 0 && (p.votesFor * 100 / totalVotes) >= PASS_THRESHOLD) {
-            p.passed = true;
-            
-            // Slash the target's vouched stake
-            if (address(vouchContract) != address(0)) {
-                uint256 vouchedAmount = vouchContract.totalVouched(p.targetId);
-                if (vouchedAmount > 0) {
-                    vouchContract.slash(p.targetId, vouchedAmount);
-                }
-            }
-
-            // Return proposer stake
-            payable(profile.getOwner(p.proposerId)).transfer(p.stake);
-        } else {
-            // Failed - burn proposer stake
-            // In production: send to treasury
+        if (p.passed) {
+            // Slash passed - proposer keeps stake
+            payable(p.proposer).transfer(p.stakeAmount);
         }
+        // If failed, stake stays in contract (penalty for bad proposal)
 
         emit ProposalExecuted(proposalId, p.passed);
     }
 
     function getProposal(uint256 proposalId) external view returns (Proposal memory) {
         return proposals[proposalId];
-    }
-
-    function isVotingActive(uint256 proposalId) external view returns (bool) {
-        Proposal storage p = proposals[proposalId];
-        return !p.executed && block.timestamp <= p.createdAt + VOTE_DURATION;
     }
 }

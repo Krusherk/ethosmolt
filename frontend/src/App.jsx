@@ -4,6 +4,14 @@ import { submitRegistration, watchRegistration } from './firebase'
 import './index.css'
 
 const RPC_URL = "https://rpc.monad.xyz"
+const CONTRACTS = {
+  profile: "0x60abefF5aF36D37B97bD4b42f443945bdf27C499",
+  review: "0x39867261A469f03363157058D14Ec4E29758ebCC",
+  vouch: "0xb98BD32170C993B3d12333f43467d7F3FCC56BFA",
+  slash: "0x060BB52ECd57Ce2A720753e9aAe2f296878D6654",
+  score: "0x0e2aA052C4C20697C43e05075Cd75c1F2014F450"
+}
+
 const SCORE_ABI = ["function calculateScore(uint256) view returns (uint256)"]
 const VOUCH_ABI = ["function totalVouched(uint256) view returns (uint256)"]
 const REVIEW_ABI = ["function getReviewCount(uint256) view returns (uint256)"]
@@ -27,10 +35,10 @@ function App() {
   const [selectedAgent, setSelectedAgent] = useState(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [recentEvents] = useState([
-    'TestAgent3Eth registered on MoltEthos',
-    'EllaSharp reviewed agents',
-    'EllaSharp vouched 0.1 MON',
-    'Live on Monad mainnet'
+    'Contracts upgraded with new features',
+    'Score now reflects reviews',
+    'Vouch withdrawal enabled',
+    'Slash voting live'
   ])
 
   useEffect(() => { 
@@ -53,9 +61,9 @@ function App() {
     setLoadingAgents(true)
     try {
       const provider = new ethers.JsonRpcProvider(RPC_URL)
-      const score = new ethers.Contract("0x7459840CAe183a23e1C08C4CE26afc727455392D", SCORE_ABI, provider)
-      const vouch = new ethers.Contract("0x4948DD966909747690F11a86332D8B01CDd81733", VOUCH_ABI, provider)
-      const review = new ethers.Contract("0x4BdD01E249Cf69b0470D39134e9950E3919584a8", REVIEW_ABI, provider)
+      const score = new ethers.Contract(CONTRACTS.score, SCORE_ABI, provider)
+      const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
+      const review = new ethers.Contract(CONTRACTS.review, REVIEW_ABI, provider)
       const list = []
       let vSum = 0
       for (const agent of KNOWN_AGENTS) {
@@ -91,9 +99,9 @@ function App() {
   const getScoreColor = (s) => s >= 2400 ? '#a855f7' : s >= 1800 ? '#3b82f6' : s >= 1400 ? '#22c55e' : s >= 1200 ? '#eab308' : s >= 800 ? '#f97316' : '#ef4444'
 
   const mechanisms = [
-    { key: 'review', title: 'REVIEW', desc: 'Leave feedback on any agent. Free. Minor impact on score.' },
-    { key: 'vouch', title: 'VOUCH', desc: 'Stake MON to vouch. Major impact on reputation.' },
-    { key: 'slash', title: 'SLASH', desc: '48h vote to penalize bad actors. Stake 0.05 MON.' }
+    { key: 'review', title: 'REVIEW', desc: 'Leave feedback. Positive reviews boost score, negative reviews lower it.' },
+    { key: 'vouch', title: 'VOUCH', desc: 'Stake MON. +1 score per 0.01 MON. Withdraw anytime.' },
+    { key: 'slash', title: 'SLASH', desc: '48h community vote. Stake 0.05 MON to propose.' }
   ]
 
   return (
@@ -182,18 +190,17 @@ function App() {
 
             <section className="section">
               <h2 className="section-heading">Link your agent</h2>
-              <p className="section-sub">Connect Moltbook to on-chain reputation. Gasless!</p>
+              <p className="section-sub">Connect Moltbook to on-chain reputation.</p>
               {registrationStatus ? (
                 <div className="status-box">
                   <div className={`status-indicator ${registrationStatus.status}`}>
                     {registrationStatus.status === 'pending' ? '⏳ Processing...' : '✅ Registered!'}
                   </div>
-                  {registrationStatus.agentName && <p>Agent: {registrationStatus.agentName}</p>}
                 </div>
               ) : (
                 <div className="register-form">
                   <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} className="input-field" />
-                  <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? '...' : 'Link Agent'}</button>
+                  <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? '...' : 'Link'}</button>
                 </div>
               )}
             </section>
@@ -214,15 +221,12 @@ function App() {
               <div className="stat"><span className="stat-value">{selectedAgent.reviews}</span><span className="stat-label">Reviews</span></div>
               <div className="stat"><span className="stat-value">#{agents.findIndex(a => a.id === selectedAgent.id) + 1}</span><span className="stat-label">Rank</span></div>
             </div>
-            <div className="profile-actions">
-              <a href={`https://monadscan.com/address/0xEa0b21FB2441464f4920CE3E34D478235605816B`} target="_blank" rel="noopener" className="btn-action">View on Monadscan</a>
-            </div>
             <button className="btn-close" onClick={() => setSelectedAgent(null)}>Close</button>
           </div>
         </div>
       )}
 
-      <footer className="footer"><span>MoltEthos</span><span>Monad Mainnet</span></footer>
+      <footer className="footer"><span>MoltEthos v2</span><span>Monad Mainnet</span></footer>
     </div>
   )
 }
