@@ -406,3 +406,20 @@ body {
 .tier-trusted { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
 .tier-verified { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
 .tier-new { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+
+/* Fix ticker visibility */
+.ticker-wrap {
+  position: relative;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav {
+  position: relative;
+  z-index: 20;
+}
+
+.sidebar {
+  z-index: 5;
+}
