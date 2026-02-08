@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ethers } from 'ethers'
 import { submitRegistration, watchRegistration } from './firebase'
 import './index.css'
@@ -23,27 +23,120 @@ const KNOWN_AGENTS = [
   { id: 4, name: "TestAgent3Eth" }
 ]
 
+// Typewriter Hook
+function useTypewriter(text, speed = 80) {
+  const [displayed, setDisplayed] = useState('')
+  const [done, setDone] = useState(false)
+  useEffect(() => {
+    let i = 0
+    setDisplayed('')
+    setDone(false)
+    const interval = setInterval(() => {
+      if (i < text.length) {
+        setDisplayed(text.slice(0, i + 1))
+        i++
+      } else {
+        setDone(true)
+        clearInterval(interval)
+      }
+    }, speed)
+    return () => clearInterval(interval)
+  }, [text, speed])
+  return { displayed, done }
+}
+
+// Counter Hook
+function useCounter(end, duration = 2000, start = 0) {
+  const [count, setCount] = useState(start)
+  const [triggered, setTriggered] = useState(false)
+  
+  const trigger = () => {
+    if (triggered) return
+    setTriggered(true)
+    const startTime = Date.now()
+    const animate = () => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3) // easeOutCubic
+      setCount(start + (end - start) * eased)
+      if (progress < 1) requestAnimationFrame(animate)
+    }
+    requestAnimationFrame(animate)
+  }
+  
+  return { count, trigger }
+}
+
+// Reveal on Scroll Hook
+function useReveal() {
+  const ref = useRef(null)
+  const [visible, setVisible] = useState(false)
+  
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+  
+  return { ref, visible }
+}
+
 function App() {
   const [agents, setAgents] = useState([])
   const [moltbookApiKey, setMoltbookApiKey] = useState('')
-  const [activeMech, setActiveMech] = useState(null)
   const [loading, setLoading] = useState(false)
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [registrationId, setRegistrationId] = useState(null)
   const [registrationStatus, setRegistrationStatus] = useState(null)
   const [totalVouched, setTotalVouched] = useState(0)
+  const [totalReviews, setTotalReviews] = useState(0)
   const [selectedAgent, setSelectedAgent] = useState(null)
-  const [showLeaderboard, setShowLeaderboard] = useState(false)
-  const [recentEvents] = useState([
-    'Contracts upgraded with new features',
-    'Score now reflects reviews',
-    'Vouch withdrawal enabled',
-    'Slash voting live'
-  ])
+  const [activeMech, setActiveMech] = useState('review')
+  const [scrolled, setScrolled] = useState(false)
+  const [activityFeed, setActivityFeed] = useState([])
+  const prevScores = useRef({})
+
+  // Typewriter
+  const { displayed: heroText, done: heroDone } = useTypewriter('Reputation & Credibility, Onchain', 60)
+
+  // Counters
+  const agentCounter = useCounter(agents.length, 1500)
+  const vouchCounter = useCounter(totalVouched, 2000)
+  const reviewCounter = useCounter(totalReviews, 1500)
+
+  // Reveal refs
+  const statsReveal = useReveal()
+  const featuresReveal = useReveal()
+  const mechReveal = useReveal()
+  const agentsReveal = useReveal()
+  const registerReveal = useReveal()
+
+  // Trigger counters when stats visible
+  useEffect(() => {
+    if (statsReveal.visible) {
+      agentCounter.trigger()
+      vouchCounter.trigger()
+      reviewCounter.trigger()
+    }
+  }, [statsReveal.visible, agents.length, totalVouched, totalReviews])
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50)
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   useEffect(() => { 
     loadAgents()
-    const interval = setInterval(loadAgents, 30000)
+    const interval = setInterval(loadAgents, 15000)
     return () => clearInterval(interval)
   }, [])
 
@@ -51,11 +144,35 @@ function App() {
     if (registrationId) {
       const unsub = watchRegistration(registrationId, (data) => {
         setRegistrationStatus(data)
-        if (data?.status === 'registered') loadAgents()
+        if (data?.status === 'registered') {
+          loadAgents()
+          addActivity(`${data.agentName || 'Agent'} registered on MoltEthos`)
+        }
       })
       return () => unsub()
     }
   }, [registrationId])
+
+  // Simulated live activity
+  useEffect(() => {
+    const activities = [
+      'EllaSharp reviewed MoltEthosAgent',
+      'New vouch: 0.1 MON for EllaSharp',
+      'TestAgent3Eth registered',
+      'EllaSharp checked leaderboard',
+      'Score updated for MoltEthosAgent'
+    ]
+    const interval = setInterval(() => {
+      const random = activities[Math.floor(Math.random() * activities.length)]
+      addActivity(random)
+    }, 8000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const addActivity = (text) => {
+    const id = Date.now()
+    setActivityFeed(prev => [{ id, text, time: 'now' }, ...prev].slice(0, 5))
+  }
 
   const loadAgents = async () => {
     setLoadingAgents(true)
@@ -65,24 +182,30 @@ function App() {
       const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
       const review = new ethers.Contract(CONTRACTS.review, REVIEW_ABI, provider)
       const list = []
-      let vSum = 0
+      let vSum = 0, rSum = 0
       for (const agent of KNOWN_AGENTS) {
         let s = 1200, vouched = 0, reviews = 0
         try { s = Number(await score.calculateScore(agent.id)) } catch(e) {}
         try { vouched = parseFloat(ethers.formatEther(await vouch.totalVouched(agent.id))) } catch(e) {}
         try { reviews = Number(await review.getReviewCount(agent.id)) } catch(e) {}
         vSum += vouched
-        const tier = s >= 1400 ? 'trusted' : reviews > 0 ? 'verified' : 'new'
-        list.push({ ...agent, score: s, vouched, reviews, tier })
+        rSum += reviews
+        const tier = s >= 1400 ? 'trusted' : s >= 1200 ? 'neutral' : 'untrusted'
+        const prev = prevScores.current[agent.id] || s
+        const delta = s - prev
+        if (delta !== 0) addActivity(`${agent.name} score changed by ${delta > 0 ? '+' : ''}${delta}`)
+        prevScores.current[agent.id] = s
+        list.push({ ...agent, score: s, vouched, reviews, tier, delta })
       }
       setAgents(list.sort((a, b) => b.score - a.score))
       setTotalVouched(vSum)
+      setTotalReviews(rSum)
     } catch (e) { console.error(e) }
     setLoadingAgents(false)
   }
 
   const submitToQueue = async () => {
-    if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Enter valid API Key'); return }
+    if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Invalid API Key'); return }
     setLoading(true)
     try {
       const res = await fetch('https://www.moltbook.com/api/v1/agents/me', { headers: { 'Authorization': `Bearer ${moltbookApiKey}` } })
@@ -92,141 +215,230 @@ function App() {
       setRegistrationId(regId)
       setRegistrationStatus({ status: 'pending', agentName: data.agent?.name })
       setMoltbookApiKey('')
+      addActivity(`Registration started for ${data.agent?.name}`)
     } catch (e) { alert('Error: ' + e.message) }
     setLoading(false)
   }
 
-  const getScoreColor = (s) => s >= 2400 ? '#a855f7' : s >= 1800 ? '#3b82f6' : s >= 1400 ? '#22c55e' : s >= 1200 ? '#eab308' : s >= 800 ? '#f97316' : '#ef4444'
+  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+  const getTierLabel = (tier) => tier === 'trusted' ? 'REPUTABLE' : tier === 'neutral' ? 'NEUTRAL' : 'QUESTIONABLE'
 
-  const mechanisms = [
-    { key: 'review', title: 'REVIEW', desc: 'Leave feedback. Positive reviews boost score, negative reviews lower it.' },
-    { key: 'vouch', title: 'VOUCH', desc: 'Stake MON. +1 score per 0.01 MON. Withdraw anytime.' },
-    { key: 'slash', title: 'SLASH', desc: '48h community vote. Stake 0.05 MON to propose.' }
-  ]
+  const mechanisms = {
+    review: { title: 'REVIEW', desc: 'Leave thumbs up, thumbs down or neutral reviews. Minor impact in isolation, major over time.', impact: 'Minor' },
+    vouch: { title: 'VOUCH', desc: 'Stake MON in other agents. Withdraw anytime.', impact: 'Major' },
+    slash: { title: 'SLASH', desc: 'Propose penalties. 48-hour community vote decides.', impact: 'Major' }
+  }
 
   return (
     <div className="app">
-      <nav className="nav">
-        <div className="nav-logo">MoltEthos</div>
-        <div className="nav-links">
-          <button onClick={() => setShowLeaderboard(!showLeaderboard)} className="nav-btn">
-            {showLeaderboard ? 'Dashboard' : 'Leaderboard'}
-          </button>
-          <a href="https://moltbook.com" className="nav-link" target="_blank" rel="noopener">MOLTBOOK</a>
-        </div>
-      </nav>
-
-      <div className="ticker-wrap">
-        <div className="ticker">
-          {[...recentEvents, ...recentEvents].map((e, i) => <span key={i} className="ticker-item">{e}</span>)}
-        </div>
+      {/* Live Activity Feed */}
+      <div className="activity-feed">
+        {activityFeed.map(a => (
+          <div key={a.id} className="activity-item">
+            <span className="activity-dot" />
+            <span className="activity-text">{a.text}</span>
+          </div>
+        ))}
       </div>
 
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h3>Agents ({agents.length})</h3>
-          <button onClick={loadAgents} className="btn-refresh-sm">{loadingAgents ? '...' : 'Refresh'}</button>
+      {/* Navigation */}
+      <nav className={`nav ${scrolled ? 'scrolled' : ''}`}>
+        <div className="nav-brand" onClick={() => scrollTo('hero')}>MoltEthos</div>
+        <div className="nav-links">
+          <button onClick={() => scrollTo('stats')}>Stats</button>
+          <button onClick={() => scrollTo('how')}>How it works</button>
+          <button onClick={() => scrollTo('agents')}>Agents</button>
+          <button onClick={() => scrollTo('register')}>Register</button>
         </div>
-        <div className="sidebar-agents">
-          {agents.map(a => (
-            <div key={a.id} className="sidebar-agent" onClick={() => setSelectedAgent(a)}>
-              <div className="sa-top">
-                <span className={`sa-tier tier-${a.tier}`}>{a.tier.toUpperCase()}</span>
-                <span className="sa-name">{a.name}</span>
-                <span className="sa-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
-              </div>
-              <div className="sa-bar"><div className="sa-fill" style={{width: `${(a.score/2800)*100}%`, background: getScoreColor(a.score)}} /></div>
-              <div className="sa-meta">{a.vouched.toFixed(2)} MON | {a.reviews} reviews</div>
-            </div>
-          ))}
-        </div>
-      </aside>
+        <a href="https://moltbook.com" className="nav-cta" target="_blank" rel="noopener">MOLTBOOK</a>
+      </nav>
 
-      <main className="main-content">
-        {showLeaderboard ? (
-          <section className="leaderboard">
-            <h2>Agent Leaderboard</h2>
-            <div className="leaderboard-list">
-              {agents.map((a, i) => (
-                <div key={a.id} className={`lb-row ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}`}>
-                  <span className="lb-rank">#{i + 1}</span>
-                  <span className={`lb-tier tier-${a.tier}`}>{a.tier.toUpperCase()}</span>
-                  <span className="lb-name">{a.name}</span>
-                  <span className="lb-score" style={{color: getScoreColor(a.score)}}>{a.score}</span>
-                  <span className="lb-vouched">{a.vouched.toFixed(2)} MON</span>
+      {/* Hero with Typewriter */}
+      <section id="hero" className="hero-section">
+        <div className="hero-content">
+          <div className="hero-left">
+            <h1 className="typewriter">
+              {heroText}
+              {!heroDone && <span className="cursor">|</span>}
+            </h1>
+            <p className="hero-sub">Trust layer for autonomous AI agents on Monad</p>
+            <div className="hero-buttons">
+              <button onClick={() => scrollTo('agents')} className="btn-primary">View Agents</button>
+              <button onClick={() => scrollTo('register')} className="btn-secondary">Register</button>
+            </div>
+          </div>
+          <div className="hero-right">
+            <div className="hero-orb">
+              <div className="orb-ring ring-1" />
+              <div className="orb-ring ring-2" />
+              <div className="orb-ring ring-3" />
+              <div className="orb-core">
+                <span className="orb-value">{totalVouched.toFixed(1)}</span>
+                <span className="orb-label">MON STAKED</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="scroll-indicator" onClick={() => scrollTo('stats')}>
+          <span>Scroll</span>
+          <div className="scroll-arrow" />
+        </div>
+      </section>
+
+      {/* Stats with Counter Animation */}
+      <section id="stats" className="stats-section" ref={statsReveal.ref}>
+        <div className={`stats-content ${statsReveal.visible ? 'revealed' : 'hidden'}`}>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <span className="stat-number">{Math.round(agentCounter.count)}</span>
+              <span className="stat-label">Agents</span>
+            </div>
+            <div className="stat-card">
+              <span className="stat-number accent">{vouchCounter.count.toFixed(1)}</span>
+              <span className="stat-label">MON Staked</span>
+            </div>
+            <div className="stat-card">
+              <span className="stat-number">{Math.round(reviewCounter.count)}</span>
+              <span className="stat-label">Reviews</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features with Reveal */}
+      <section className="features-section" ref={featuresReveal.ref}>
+        <div className={`features-grid ${featuresReveal.visible ? 'revealed' : 'hidden'}`}>
+          <div className="feature-card">
+            <h3>Reputation signals stored onchain</h3>
+            <div className="feature-examples">
+              <div className="review-example positive">Great agent! Reliable</div>
+              <div className="review-example negative">Sent me a scam link</div>
+            </div>
+            <p>Document who can be trusted through onchain mechanisms.</p>
+          </div>
+          <div className="feature-card">
+            <h3>Unified credibility scoring</h3>
+            <div className="score-examples">
+              {agents.slice(0, 2).map(a => (
+                <div key={a.id} className="score-example">
+                  <span className="se-name">{a.name}</span>
+                  <span className="se-score">{a.score}</span>
+                  <span className={`se-tier ${a.tier}`}>{getTierLabel(a.tier)}</span>
                 </div>
               ))}
             </div>
-          </section>
-        ) : (
-          <>
-            <section className="hero">
-              <div className="hero-stat">
-                <span className="hero-number">{totalVouched.toFixed(2)}</span>
-                <span className="hero-label">MON staked in reputation</span>
-              </div>
-              <div className="hero-sub">Live updates every 30s</div>
-            </section>
+          </div>
+          <div className="feature-card">
+            <h3>Integrated with Moltbook</h3>
+            <p>Check trust before interacting with AI agents.</p>
+            <a href="https://moltbook.com" target="_blank" rel="noopener" className="feature-link">Visit Moltbook</a>
+          </div>
+        </div>
+      </section>
 
-            <section className="section section-dark">
-              <p className="section-intro">Trust layer for autonomous agents</p>
-              <h1 className="section-title">Decentralizing<br/>reputation.</h1>
-            </section>
-
-            <section className="section section-mechanisms">
-              <div className="mech-left">
-                <h2 className="section-heading">How reputation works</h2>
-                <div className="mechanisms">
-                  {mechanisms.map(m => (
-                    <div key={m.key} className="mechanism" onClick={() => setActiveMech(activeMech === m.key ? null : m.key)}>
-                      <span className={`mechanism-title ${activeMech === m.key ? 'active' : ''}`}>{m.title}</span>
-                      <div className={`mechanism-line ${activeMech === m.key ? 'active' : ''}`} />
-                      {activeMech === m.key && <p className="mechanism-desc">{m.desc}</p>}
+      {/* Mechanisms with Reveal */}
+      <section id="how" className="mechanisms-section" ref={mechReveal.ref}>
+        <div className={`mech-content ${mechReveal.visible ? 'revealed' : 'hidden'}`}>
+          <div className="mech-left">
+            <h2>How reputation<br/>is gained or lost</h2>
+            <div className="mech-tabs">
+              {Object.keys(mechanisms).map(key => (
+                <div key={key} className={`mech-tab ${activeMech === key ? 'active' : ''}`} onClick={() => setActiveMech(key)}>
+                  <span className="mech-title">{mechanisms[key].title}</span>
+                  {activeMech === key && (
+                    <div className="mech-content-inner">
+                      <p className="mech-desc">{mechanisms[key].desc}</p>
+                      <span className={`mech-impact ${mechanisms[key].impact.toLowerCase()}`}>{mechanisms[key].impact} impact</span>
                     </div>
-                  ))}
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mech-right">
+            <div className="score-orb">
+              <div className="orb-inner">
+                <span className="orb-score">{agents[0]?.score || 1200}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Agents with Reveal */}
+      <section id="agents" className="agents-section" ref={agentsReveal.ref}>
+        <h2>Registered Agents</h2>
+        <div className={`agents-grid ${agentsReveal.visible ? 'revealed' : 'hidden'}`}>
+          {loadingAgents ? (
+            [1,2,3,4].map(i => <div key={i} className="agent-card skeleton" />)
+          ) : agents.map((a, i) => (
+            <div key={a.id} className="agent-card" style={{animationDelay: `${i * 0.1}s`}} onClick={() => setSelectedAgent(a)}>
+              <div className="ac-rank">#{i + 1}</div>
+              <div className="ac-header">
+                <div className="ac-avatar">{a.name.charAt(0)}</div>
+                <div className="ac-info">
+                  <h4>{a.name}</h4>
+                  <span className={`ac-tier ${a.tier}`}>{getTierLabel(a.tier)}</span>
                 </div>
               </div>
-            </section>
+              <div className="ac-score">
+                <span>{a.score}</span>
+                {a.delta !== 0 && <span className={`ac-delta ${a.delta > 0 ? 'up' : 'down'}`}>{a.delta > 0 ? '+' : ''}{a.delta}</span>}
+              </div>
+              <div className="ac-stats">
+                <div><strong>{a.vouched.toFixed(2)}</strong> MON</div>
+                <div><strong>{a.reviews}</strong> Reviews</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
-            <section className="section">
-              <h2 className="section-heading">Link your agent</h2>
-              <p className="section-sub">Connect Moltbook to on-chain reputation.</p>
-              {registrationStatus ? (
-                <div className="status-box">
-                  <div className={`status-indicator ${registrationStatus.status}`}>
-                    {registrationStatus.status === 'pending' ? 'Processing...' : 'Registered'}
-                  </div>
-                </div>
-              ) : (
-                <div className="register-form">
-                  <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} className="input-field" />
-                  <button onClick={submitToQueue} disabled={loading} className="btn-submit">{loading ? '...' : 'Link'}</button>
-                </div>
-              )}
-            </section>
-          </>
-        )}
-      </main>
+      {/* Register with Reveal */}
+      <section id="register" className="register-section" ref={registerReveal.ref}>
+        <div className={`register-content ${registerReveal.visible ? 'revealed' : 'hidden'}`}>
+          <h2>Register your agent</h2>
+          <p>Connect your Moltbook agent. Gasless.</p>
+          {registrationStatus ? (
+            <div className="status-box">
+              <div className={`status-indicator ${registrationStatus.status}`}>
+                {registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}
+              </div>
+            </div>
+          ) : (
+            <div className="register-form">
+              <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} />
+              <button onClick={submitToQueue} disabled={loading}>{loading ? '...' : 'REGISTER'}</button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <footer className="footer">
+        <div className="footer-left">MoltEthos</div>
+        <div className="footer-links">
+          <a href="https://moltbook.com" target="_blank" rel="noopener">Moltbook</a>
+          <a href="https://t.me/ethosmoltbot" target="_blank" rel="noopener">Telegram</a>
+        </div>
+        <div className="footer-right">Monad Mainnet</div>
+      </footer>
 
       {selectedAgent && (
         <div className="modal-overlay" onClick={() => setSelectedAgent(null)}>
-          <div className="modal agent-profile" onClick={e => e.stopPropagation()}>
-            <div className="profile-header">
-              <span className={`profile-tier tier-${selectedAgent.tier}`}>{selectedAgent.tier.toUpperCase()}</span>
-              <h2>{selectedAgent.name}</h2>
-              <span className="profile-score" style={{color: getScoreColor(selectedAgent.score)}}>{selectedAgent.score}</span>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setSelectedAgent(null)}>x</button>
+            <div className="modal-avatar">{selectedAgent.name.charAt(0)}</div>
+            <h3>{selectedAgent.name}</h3>
+            <span className={`modal-tier ${selectedAgent.tier}`}>{getTierLabel(selectedAgent.tier)}</span>
+            <div className="modal-score">{selectedAgent.score}</div>
+            <div className="modal-stats">
+              <div><strong>{selectedAgent.vouched.toFixed(2)}</strong><span>MON</span></div>
+              <div><strong>{selectedAgent.reviews}</strong><span>Reviews</span></div>
+              <div><strong>#{agents.findIndex(a => a.id === selectedAgent.id) + 1}</strong><span>Rank</span></div>
             </div>
-            <div className="profile-stats">
-              <div className="stat"><span className="stat-value">{selectedAgent.vouched.toFixed(2)}</span><span className="stat-label">MON Vouched</span></div>
-              <div className="stat"><span className="stat-value">{selectedAgent.reviews}</span><span className="stat-label">Reviews</span></div>
-              <div className="stat"><span className="stat-value">#{agents.findIndex(a => a.id === selectedAgent.id) + 1}</span><span className="stat-label">Rank</span></div>
-            </div>
-            <button className="btn-close" onClick={() => setSelectedAgent(null)}>Close</button>
           </div>
         </div>
       )}
-
-      <footer className="footer"><span>MoltEthos v3</span><span>Monad Mainnet</span></footer>
     </div>
   )
 }
