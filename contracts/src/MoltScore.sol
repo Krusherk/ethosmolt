@@ -13,8 +13,8 @@ interface IMoltVouch {
 
 contract MoltScore {
     uint256 public constant BASE_SCORE = 1200;
-    uint256 public constant MAX_REVIEW_IMPACT = 200;
-    uint256 public constant VOUCH_MULTIPLIER = 100; // 1 point per 0.01 MON
+    uint256 public constant MAX_REVIEW_IMPACT = 100;
+    uint256 public constant VOUCH_DIVISOR = 0.1 ether; // +1 point per 0.1 MON
 
     IMoltProfile public immutable profile;
     IMoltReview public immutable reviewContract;
@@ -31,25 +31,19 @@ contract MoltScore {
 
         uint256 score = BASE_SCORE;
 
-        // Review impact
+        // Review impact (max +/- 100)
         (uint256 positive, , uint256 negative) = reviewContract.getSentimentCounts(agentId);
-        uint256 total = positive + negative;
-        if (total > 0) {
-            if (positive > negative) {
-                uint256 diff = positive - negative;
-                uint256 impact = (diff * MAX_REVIEW_IMPACT) / (total > 10 ? 10 : total);
-                score += impact > MAX_REVIEW_IMPACT ? MAX_REVIEW_IMPACT : impact;
-            } else if (negative > positive) {
-                uint256 diff = negative - positive;
-                uint256 impact = (diff * MAX_REVIEW_IMPACT) / (total > 10 ? 10 : total);
-                uint256 penalty = impact > MAX_REVIEW_IMPACT ? MAX_REVIEW_IMPACT : impact;
-                score = score > penalty ? score - penalty : 0;
-            }
+        if (positive > negative) {
+            uint256 bonus = (positive - negative) * 10;
+            score += bonus > MAX_REVIEW_IMPACT ? MAX_REVIEW_IMPACT : bonus;
+        } else if (negative > positive) {
+            uint256 penalty = (negative - positive) * 10;
+            score = score > penalty ? score - penalty : 800;
         }
 
-        // Vouch impact (+1 point per 0.01 MON)
+        // Vouch impact (+1 per 0.1 MON)
         uint256 vouched = vouchContract.totalVouched(agentId);
-        score += (vouched * VOUCH_MULTIPLIER) / 0.01 ether;
+        score += vouched / VOUCH_DIVISOR;
 
         return score;
     }
