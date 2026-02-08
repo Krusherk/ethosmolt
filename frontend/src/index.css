@@ -335,3 +335,60 @@ body {
   font-size: 0.75rem;
   margin-top: 0.25rem;
 }
+
+/* Nav Links */
+.nav-links { display: flex; gap: 1rem; align-items: center; }
+.nav-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 8px; color: #fff; cursor: pointer; font-size: 0.85rem; }
+.nav-btn:hover { background: rgba(255,255,255,0.2); }
+
+/* Leaderboard */
+.leaderboard { padding: 2rem; }
+.leaderboard h2 { font-size: 2rem; margin-bottom: 1.5rem; }
+.leaderboard-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.lb-row { display: flex; align-items: center; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 12px; }
+.lb-row.gold { background: linear-gradient(135deg, rgba(255,215,0,0.1), rgba(255,215,0,0.05)); border: 1px solid rgba(255,215,0,0.3); }
+.lb-row.silver { background: linear-gradient(135deg, rgba(192,192,192,0.1), rgba(192,192,192,0.05)); border: 1px solid rgba(192,192,192,0.3); }
+.lb-row.bronze { background: linear-gradient(135deg, rgba(205,127,50,0.1), rgba(205,127,50,0.05)); border: 1px solid rgba(205,127,50,0.3); }
+.lb-rank { font-size: 1.2rem; font-weight: 700; width: 3rem; }
+.lb-badge { font-size: 1.2rem; }
+.lb-name { flex: 1; font-weight: 600; }
+.lb-score { font-size: 1.5rem; font-weight: 700; }
+.lb-vouched { color: #888; font-size: 0.85rem; }
+
+/* Agent Profile Modal */
+.agent-profile { max-width: 400px; text-align: center; }
+.profile-header { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-bottom: 1.5rem; }
+.profile-badge { font-size: 2rem; }
+.profile-header h2 { margin: 0; }
+.profile-score { font-size: 2rem; font-weight: 700; }
+.profile-stats { display: flex; justify-content: space-around; margin-bottom: 1.5rem; }
+.stat { text-align: center; }
+.stat-value { display: block; font-size: 1.5rem; font-weight: 700; }
+.stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; }
+.profile-actions { margin-bottom: 1rem; }
+.btn-action { display: inline-block; padding: 0.75rem 1.5rem; background: rgba(255,255,255,0.1); border-radius: 8px; color: #fff; text-decoration: none; }
+.btn-action:hover { background: rgba(255,255,255,0.2); }
+
+/* Badge in sidebar */
+.sa-badge { font-size: 1rem; margin-right: 0.25rem; }
+
+/* Hero sub */
+.hero-sub { font-size: 0.75rem; color: #666; margin-top: 0.5rem; }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .app { flex-direction: column; }
+  .sidebar { position: relative; width: 100%; height: auto; max-height: 300px; overflow-y: auto; }
+  .main-content { margin-left: 0; padding: 1rem; }
+  .nav { padding: 0.75rem 1rem; }
+  .nav-links { gap: 0.5rem; }
+  .hero-stat { padding: 1.5rem; }
+  .hero-number { font-size: 3rem; }
+  .section-title { font-size: 1.75rem; }
+  .leaderboard h2 { font-size: 1.5rem; }
+  .lb-row { padding: 0.75rem; gap: 0.5rem; }
+  .lb-score { font-size: 1.2rem; }
+  .modal { width: 95%; margin: 1rem; }
+  .register-form { flex-direction: column; }
+  .register-form input { width: 100%; }
+}
