@@ -590,26 +590,29 @@ function App() {
         setLoadingAgents(true)
         try {
             const provider = new ethers.JsonRpcProvider(RPC_URL)
-
-            // Use legacy contracts for score calculation (still works)
-            const score = new ethers.Contract(LEGACY_CONTRACTS.score, SCORE_ABI, provider)
-            const vouch = new ethers.Contract(LEGACY_CONTRACTS.vouch, VOUCH_ABI, provider)
-            const review = new ethers.Contract(LEGACY_CONTRACTS.review, REVIEW_ABI, provider)
+            const reputation = new ethers.Contract(ERC8004.reputation, REPUTATION_ABI, provider)
 
             const list = []
             let vSum = 0, rSum = 0
 
             for (const agent of KNOWN_AGENTS) {
-                let s = 1200, vouched = 0, reviews = 0
-                try { s = Number(await score.calculateScore(agent.id)) } catch (e) { }
-                try { vouched = parseFloat(ethers.formatEther(await vouch.totalVouched(agent.id))) } catch (e) { }
-                try { reviews = Number(await review.getReviewCount(agent.id)) } catch (e) { }
-                vSum += vouched; rSum += reviews
-                const tier = s >= 1400 ? 'trusted' : s >= 1200 ? 'neutral' : 'untrusted'
-                const prev = prevScores.current[agent.id] || s
-                const delta = s - prev
-                prevScores.current[agent.id] = s
-                list.push({ ...agent, score: s, vouched, reviews, tier, delta })
+                let score = 1200, count = 0, summaryValue = 0
+                try {
+                    // Fetch ERC-8004 summary
+                    const summary = await reputation.getSummary(agent.id, [], "", "")
+                    count = Number(summary.count)
+                    summaryValue = Number(summary.summaryValue)
+                    // Map -1/0/+1 to 1200-base score for display
+                    score = 1200 + (summaryValue * 10)
+                } catch (e) { console.warn(`Failed to fetch 8004 data for ${agent.name}`, e) }
+
+                vSum += (summaryValue > 0 ? summaryValue * 0.1 : 0)
+                rSum += count
+                const tier = score >= 1400 ? 'trusted' : score >= 1200 ? 'neutral' : 'untrusted'
+                const prev = prevScores.current[agent.id] || score
+                const delta = score - prev
+                prevScores.current[agent.id] = score
+                list.push({ ...agent, score, vouched: vSum, reviews: count, tier, delta })
             }
             setAgents(list.sort((a, b) => b.score - a.score))
             setTotalVouched(vSum)
@@ -625,10 +628,13 @@ function App() {
             const res = await fetch('https://www.moltbook.com/api/v1/agents/me', { headers: { 'Authorization': `Bearer ${moltbookApiKey}` } })
             const data = await res.json()
             if (!data.success) { alert('Invalid API Key'); setLoading(false); return }
+
+            // Submit to gasless registration queue for ERC-8004 minting
             const regId = await submitRegistration(moltbookApiKey)
             setRegistrationId(regId)
             setRegistrationStatus({ status: 'pending', agentName: data.agent?.name })
             setMoltbookApiKey('')
+            addActivity(`ERC-8004 registration queued for ${data.agent?.name}`)
         } catch (e) { alert('Error: ' + e.message) }
         setLoading(false)
     }
