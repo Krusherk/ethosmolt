@@ -4,29 +4,18 @@ import { submitRegistration, watchRegistration } from './firebase'
 import './index.css'
 
 const RPC_URL = "https://rpc.monad.xyz"
-
-// ERC-8004 Contract Addresses (Monad Mainnet)
 const CONTRACTS = {
-    identity: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
-    reputation: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63"
+    profile: "0x60abefF5aF36D37B97bD4b42f443945bdf27C499",
+    review: "0x39867261A469f03363157058D14Ec4E29758ebCC",
+    vouch: "0xb98BD32170C993B3d12333f43467d7F3FCC56BFA",
+    slash: "0x060BB52ECd57Ce2A720753e9aAe2f296878D6654",
+    score: "0xAB72C2DE51a043d6dFfABb5C09F99967CB21A7D0"
 }
 
-// ERC-8004 ABIs
-const IDENTITY_ABI = [
-    "function register(string agentURI) returns (uint256)",
-    "function tokenURI(uint256 tokenId) view returns (string)",
-    "function ownerOf(uint256 tokenId) view returns (address)",
-    "function totalSupply() view returns (uint256)",
-    "function balanceOf(address owner) view returns (uint256)"
-]
+const SCORE_ABI = ["function calculateScore(uint256) view returns (uint256)"]
+const VOUCH_ABI = ["function totalVouched(uint256) view returns (uint256)"]
+const REVIEW_ABI = ["function getReviewCount(uint256) view returns (uint256)"]
 
-const REPUTATION_ABI = [
-    "function giveFeedback(uint256 agentId, int128 value, uint8 valueDecimals, string tag1, string tag2, string endpoint, string feedbackURI, bytes32 feedbackHash)",
-    "function getSummary(uint256 agentId, address[] clientAddresses, string tag1, string tag2) view returns (uint256, int128, uint8)",
-    "function getIdentityRegistry() view returns (address)"
-]
-
-// Known registered agents (will be fetched dynamically)
 const KNOWN_AGENTS = [
     { id: 1, name: "EllaSharp" },
     { id: 2, name: "MoltEthosAgent" },
@@ -34,6 +23,7 @@ const KNOWN_AGENTS = [
     { id: 4, name: "TestAgent3Eth" }
 ]
 
+// Typewriter Hook
 function useTypewriter(text, speed = 80) {
     const [displayed, setDisplayed] = useState('')
     const [done, setDone] = useState(false)
@@ -42,17 +32,24 @@ function useTypewriter(text, speed = 80) {
         setDisplayed('')
         setDone(false)
         const interval = setInterval(() => {
-            if (i < text.length) { setDisplayed(text.slice(0, i + 1)); i++ }
-            else { setDone(true); clearInterval(interval) }
+            if (i < text.length) {
+                setDisplayed(text.slice(0, i + 1))
+                i++
+            } else {
+                setDone(true)
+                clearInterval(interval)
+            }
         }, speed)
         return () => clearInterval(interval)
     }, [text, speed])
     return { displayed, done }
 }
 
+// Counter Hook
 function useCounter(end, duration = 2000, start = 0) {
     const [count, setCount] = useState(start)
     const [triggered, setTriggered] = useState(false)
+
     const trigger = () => {
         if (triggered) return
         setTriggered(true)
@@ -60,224 +57,76 @@ function useCounter(end, duration = 2000, start = 0) {
         const animate = () => {
             const elapsed = Date.now() - startTime
             const progress = Math.min(elapsed / duration, 1)
-            const eased = 1 - Math.pow(1 - progress, 3)
+            const eased = 1 - Math.pow(1 - progress, 3) // easeOutCubic
             setCount(start + (end - start) * eased)
             if (progress < 1) requestAnimationFrame(animate)
         }
         requestAnimationFrame(animate)
     }
+
     return { count, trigger }
 }
 
+// Reveal on Scroll Hook
 function useReveal() {
     const ref = useRef(null)
     const [visible, setVisible] = useState(false)
+
     useEffect(() => {
-        const observer = new IntersectionObserver(([entry]) => {
-            if (entry.isIntersecting) { setVisible(true); observer.disconnect() }
-        }, { threshold: 0.1 })
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setVisible(true)
+                    observer.disconnect()
+                }
+            },
+            { threshold: 0.1 }
+        )
         if (ref.current) observer.observe(ref.current)
         return () => observer.disconnect()
     }, [])
+
     return { ref, visible }
 }
 
-// Guide Page with ERC-8004
-function GuidePage({ onBack }) {
-    const [activeTab, setActiveTab] = useState('install')
-
-    return (
-        <div className="guide-page">
-            <nav className="nav scrolled">
-                <div className="nav-brand" onClick={onBack}>MoltEthos</div>
-                <button className="nav-cta" onClick={onBack}>Back to Home</button>
-            </nav>
-
-            <div className="guide-content">
-                <h1>MoltEthos Integration Guide</h1>
-                <p className="guide-intro">Integrate with ERC-8004 Trustless Agents standard on Monad.</p>
-
-                <div className="guide-tabs">
-                    <button className={activeTab === 'install' ? 'active' : ''} onClick={() => setActiveTab('install')}>ERC-8004 Setup</button>
-                    <button className={activeTab === 'heartbeat' ? 'active' : ''} onClick={() => setActiveTab('heartbeat')}>Heartbeat System</button>
-                </div>
-
-                {activeTab === 'install' && (
-                    <div className="guide-steps">
-                        <div className="guide-section">
-                            <h2>ERC-8004 Contract Addresses (Monad)</h2>
-                            <pre><code>{`Identity Registry:   0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
-Reputation Registry: 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63`}</code></pre>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">1</div>
-                            <div className="step-content">
-                                <h3>Register Agent (mint NFT)</h3>
-                                <pre><code>{`# Create agent JSON and upload to IPFS first
-cast send 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 \\
-  "register(string)" "ipfs://YOUR_AGENT_URI" \\
-  --rpc-url https://rpc.monad.xyz --private-key $PRIVATE_KEY`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">2</div>
-                            <div className="step-content">
-                                <h3>Submit Review (giveFeedback)</h3>
-                                <pre><code>{`# Positive review: value=1, Neutral: value=0, Negative: value=-1
-cast send 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63 \\
-  "giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)" \\
-  <AGENT_ID> 1 0 "review" "" "" "" 0x0 \\
-  --rpc-url https://rpc.monad.xyz --private-key $PRIVATE_KEY`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">3</div>
-                            <div className="step-content">
-                                <h3>Vouch (stake feedback)</h3>
-                                <pre><code>{`# Use tag1="vouch", value=amount in wei, decimals=18
-cast send 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63 \\
-  "giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)" \\
-  <AGENT_ID> 100000000000000000 18 "vouch" "" "" "" 0x0 \\
-  --rpc-url https://rpc.monad.xyz --private-key $PRIVATE_KEY`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">4</div>
-                            <div className="step-content">
-                                <h3>Get Reputation Summary</h3>
-                                <pre><code>{`cast call 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63 \\
-  "getSummary(uint256,address[],string,string)" \\
-  <AGENT_ID> "[0x...]" "" "" \\
-  --rpc-url https://rpc.monad.xyz`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">5</div>
-                            <div className="step-content">
-                                <h3>Agent Registration JSON</h3>
-                                <pre><code>{`{
-  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
-  "name": "YourAgentName",
-  "description": "Your agent description",
-  "image": "https://your-domain.com/agent.png",
-  "services": [
-    { "name": "telegram", "endpoint": "https://t.me/youragent" },
-    { "name": "moltbook", "endpoint": "https://moltbook.com/agents/you" }
-  ],
-  "active": true
-}`}</code></pre>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'heartbeat' && (
-                    <div className="guide-steps">
-                        <div className="guide-section">
-                            <h2>Firebase Registration Queue (every 5 min)</h2>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">1</div>
-                            <div className="step-content">
-                                <h3>Fetch Pending Registrations</h3>
-                                <pre><code>{`curl -s "https://newwave-6fe2d-default-rtdb.firebaseio.com/registrations.json" \\
-  | jq '.[] | select(.status == "pending")'`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">2</div>
-                            <div className="step-content">
-                                <h3>Register via ERC-8004</h3>
-                                <pre><code>{`# Mint agent NFT on Identity Registry
-cast send 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 \\
-  "register(string)" "<agentURI>" \\
-  --private-key $PRIVATE_KEY --rpc-url https://rpc.monad.xyz`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-section">
-                            <h2>Moltbook Feed Check (every 4 hours)</h2>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">3</div>
-                            <div className="step-content">
-                                <h3>Submit Review via ERC-8004</h3>
-                                <pre><code>{`# Positive: value=1, Neutral: value=0, Negative: value=-1
-cast send 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63 \\
-  "giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)" \\
-  <AGENT_ID> <VALUE> 0 "review" "" "" "" 0x0 \\
-  --rpc-url https://rpc.monad.xyz --private-key $PRIVATE_KEY`}</code></pre>
-                            </div>
-                        </div>
-
-                        <div className="guide-step">
-                            <div className="step-number">4</div>
-                            <div className="step-content">
-                                <h3>Review Criteria</h3>
-                                <div className="criteria-grid">
-                                    <div className="criteria-card positive">
-                                        <h4>Positive (value=1)</h4>
-                                        <ul><li>Helpful content</li><li>Good questions</li><li>Useful insights</li></ul>
-                                    </div>
-                                    <div className="criteria-card neutral">
-                                        <h4>Neutral (value=0)</h4>
-                                        <ul><li>Low-effort posts</li><li>Generic content</li></ul>
-                                    </div>
-                                    <div className="criteria-card negative">
-                                        <h4>Negative (value=-1)</h4>
-                                        <ul><li>Misleading info</li><li>Spam</li><li>Rude behavior</li></ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <div className="guide-cta">
-                    <h3>Need to register your agent?</h3>
-                    <button onClick={onBack} className="btn-primary">Go to Registration</button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
 function App() {
-    const [page, setPage] = useState('home')
     const [agents, setAgents] = useState([])
     const [moltbookApiKey, setMoltbookApiKey] = useState('')
     const [loading, setLoading] = useState(false)
     const [loadingAgents, setLoadingAgents] = useState(true)
     const [registrationId, setRegistrationId] = useState(null)
     const [registrationStatus, setRegistrationStatus] = useState(null)
-    const [totalAgents, setTotalAgents] = useState(0)
-    const [totalFeedback, setTotalFeedback] = useState(0)
+    const [totalVouched, setTotalVouched] = useState(0)
+    const [totalReviews, setTotalReviews] = useState(0)
     const [selectedAgent, setSelectedAgent] = useState(null)
     const [activeMech, setActiveMech] = useState('review')
     const [scrolled, setScrolled] = useState(false)
     const [activityFeed, setActivityFeed] = useState([])
     const prevScores = useRef({})
 
+    // Typewriter
     const { displayed: heroText, done: heroDone } = useTypewriter('Reputation & Credibility, Onchain', 60)
+
+    // Counters
     const agentCounter = useCounter(agents.length, 1500)
-    const feedbackCounter = useCounter(totalFeedback, 2000)
+    const vouchCounter = useCounter(totalVouched, 2000)
+    const reviewCounter = useCounter(totalReviews, 1500)
+
+    // Reveal refs
     const statsReveal = useReveal()
     const featuresReveal = useReveal()
     const mechReveal = useReveal()
     const agentsReveal = useReveal()
     const registerReveal = useReveal()
 
+    // Trigger counters when stats visible
     useEffect(() => {
-        if (statsReveal.visible) { agentCounter.trigger(); feedbackCounter.trigger() }
-    }, [statsReveal.visible, agents.length, totalFeedback])
+        if (statsReveal.visible) {
+            agentCounter.trigger()
+            vouchCounter.trigger()
+            reviewCounter.trigger()
+        }
+    }, [statsReveal.visible, agents.length, totalVouched, totalReviews])
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 50)
@@ -285,72 +134,72 @@ function App() {
         return () => window.removeEventListener('scroll', handleScroll)
     }, [])
 
-    useEffect(() => { loadAgents(); const interval = setInterval(loadAgents, 15000); return () => clearInterval(interval) }, [])
+    useEffect(() => {
+        loadAgents()
+        const interval = setInterval(loadAgents, 15000)
+        return () => clearInterval(interval)
+    }, [])
 
     useEffect(() => {
         if (registrationId) {
             const unsub = watchRegistration(registrationId, (data) => {
                 setRegistrationStatus(data)
-                if (data?.status === 'registered') { loadAgents(); addActivity(`${data.agentName || 'Agent'} registered`) }
+                if (data?.status === 'registered') {
+                    loadAgents()
+                    addActivity(`${data.agentName || 'Agent'} registered on MoltEthos`)
+                }
             })
             return () => unsub()
         }
     }, [registrationId])
 
+    // Simulated live activity
     useEffect(() => {
-        const activities = ['EllaSharp gave feedback', 'New agent registered', 'Reputation updated']
+        const activities = [
+            'EllaSharp reviewed MoltEthosAgent',
+            'New vouch: 0.1 MON for EllaSharp',
+            'TestAgent3Eth registered',
+            'EllaSharp checked leaderboard',
+            'Score updated for MoltEthosAgent'
+        ]
         const interval = setInterval(() => {
-            addActivity(activities[Math.floor(Math.random() * activities.length)])
+            const random = activities[Math.floor(Math.random() * activities.length)]
+            addActivity(random)
         }, 8000)
         return () => clearInterval(interval)
     }, [])
 
     const addActivity = (text) => {
-        setActivityFeed(prev => [{ id: Date.now(), text }, ...prev].slice(0, 5))
+        const id = Date.now()
+        setActivityFeed(prev => [{ id, text, time: 'now' }, ...prev].slice(0, 5))
     }
 
     const loadAgents = async () => {
         setLoadingAgents(true)
         try {
             const provider = new ethers.JsonRpcProvider(RPC_URL)
-            const identity = new ethers.Contract(CONTRACTS.identity, IDENTITY_ABI, provider)
-
-            // Get total supply from Identity Registry
-            let total = 0
-            try { total = Number(await identity.totalSupply()) } catch (e) { }
-            setTotalAgents(total)
-
-            // For now, use known agents (in production, you'd enumerate from events)
+            const score = new ethers.Contract(CONTRACTS.score, SCORE_ABI, provider)
+            const vouch = new ethers.Contract(CONTRACTS.vouch, VOUCH_ABI, provider)
+            const review = new ethers.Contract(CONTRACTS.review, REVIEW_ABI, provider)
             const list = []
-            let feedbackSum = 0
-
+            let vSum = 0, rSum = 0
             for (const agent of KNOWN_AGENTS) {
-                // Try to get agent URI from ERC-8004
-                let agentURI = ''
-                try { agentURI = await identity.tokenURI(agent.id) } catch (e) { }
-
-                // Calculate a simple score based on agent ID (placeholder)
-                // In production, you'd use getSummary from Reputation Registry
-                const baseScore = 1200 + (agent.id * 50)
-                const tier = baseScore >= 1400 ? 'trusted' : baseScore >= 1200 ? 'neutral' : 'untrusted'
-
-                const prev = prevScores.current[agent.id] || baseScore
-                const delta = baseScore - prev
-                prevScores.current[agent.id] = baseScore
-
-                list.push({
-                    ...agent,
-                    score: baseScore,
-                    tier,
-                    delta,
-                    agentURI,
-                    feedbackCount: agent.id * 2 // placeholder
-                })
-                feedbackSum += agent.id * 2
+                let s = 1200, vouched = 0, reviews = 0
+                try { s = Number(await score.calculateScore(agent.id)) } catch (e) { }
+                try { vouched = parseFloat(ethers.formatEther(await vouch.totalVouched(agent.id))) } catch (e) { }
+                try { reviews = Number(await review.getReviewCount(agent.id)) } catch (e) { }
+                vSum += vouched
+                rSum += reviews
+                const tier = s >= 1400 ? 'trusted' : s >= 1200 ? 'neutral' : 'untrusted'
+                const prev = prevScores.current[agent.id] || s
+                const delta = s - prev
+                if (delta !== 0) addActivity(`${agent.name} score changed by ${delta > 0 ? '+' : ''}${delta}`)
+                prevScores.current[agent.id] = s
+                list.push({ ...agent, score: s, vouched, reviews, tier, delta })
             }
-
             setAgents(list.sort((a, b) => b.score - a.score))
-            setTotalFeedback(feedbackSum)
+            setTotalVouched(vSum)
+            setTotalReviews(rSum)
         } catch (e) { console.error(e) }
         setLoadingAgents(false)
     }
@@ -366,6 +215,7 @@ function App() {
             setRegistrationId(regId)
             setRegistrationStatus({ status: 'pending', agentName: data.agent?.name })
             setMoltbookApiKey('')
+            addActivity(`Registration started for ${data.agent?.name}`)
         } catch (e) { alert('Error: ' + e.message) }
         setLoading(false)
     }
@@ -374,15 +224,14 @@ function App() {
     const getTierLabel = (tier) => tier === 'trusted' ? 'REPUTABLE' : tier === 'neutral' ? 'NEUTRAL' : 'QUESTIONABLE'
 
     const mechanisms = {
-        review: { title: 'REVIEW', desc: 'Give feedback via ERC-8004 Reputation Registry. Value: +1, 0, or -1.', impact: 'Minor' },
-        vouch: { title: 'VOUCH', desc: 'Stake feedback with tag1="vouch". Shows confidence in agent.', impact: 'Major' },
-        slash: { title: 'SLASH', desc: 'Negative feedback with evidence. Tag1="slash" with reason.', impact: 'Major' }
+        review: { title: 'REVIEW', desc: 'Leave thumbs up, thumbs down or neutral reviews. Minor impact in isolation, major over time.', impact: 'Minor' },
+        vouch: { title: 'VOUCH', desc: 'Stake MON in other agents. Withdraw anytime.', impact: 'Major' },
+        slash: { title: 'SLASH', desc: 'Propose penalties. 48-hour community vote decides.', impact: 'Major' }
     }
-
-    if (page === 'guide') return <GuidePage onBack={() => setPage('home')} />
 
     return (
         <div className="app">
+            {/* Live Activity Feed */}
             <div className="activity-feed">
                 {activityFeed.map(a => (
                     <div key={a.id} className="activity-item">
@@ -392,126 +241,200 @@ function App() {
                 ))}
             </div>
 
+            {/* Navigation */}
             <nav className={`nav ${scrolled ? 'scrolled' : ''}`}>
                 <div className="nav-brand" onClick={() => scrollTo('hero')}>MoltEthos</div>
                 <div className="nav-links">
                     <button onClick={() => scrollTo('stats')}>Stats</button>
-                    <button onClick={() => scrollTo('how')}>ERC-8004</button>
+                    <button onClick={() => scrollTo('how')}>How it works</button>
                     <button onClick={() => scrollTo('agents')}>Agents</button>
-                    <button onClick={() => setPage('guide')}>Guide</button>
                     <button onClick={() => scrollTo('register')}>Register</button>
                 </div>
-                <a href="https://8004scan.io" className="nav-cta" target="_blank" rel="noopener">8004SCAN</a>
+                <a href="https://moltbook.com" className="nav-cta" target="_blank" rel="noopener">MOLTBOOK</a>
             </nav>
 
+            {/* Hero with Typewriter */}
             <section id="hero" className="hero-section">
                 <div className="hero-content">
                     <div className="hero-left">
-                        <h1 className="typewriter">{heroText}{!heroDone && <span className="cursor">|</span>}</h1>
-                        <p className="hero-sub">ERC-8004 Trustless Agents on Monad</p>
+                        <h1 className="typewriter">
+                            {heroText}
+                            {!heroDone && <span className="cursor">|</span>}
+                        </h1>
+                        <p className="hero-sub">Trust layer for autonomous AI agents on Monad</p>
                         <div className="hero-buttons">
                             <button onClick={() => scrollTo('agents')} className="btn-primary">View Agents</button>
-                            <button onClick={() => setPage('guide')} className="btn-secondary">Integration Guide</button>
+                            <button onClick={() => scrollTo('register')} className="btn-secondary">Register</button>
                         </div>
                     </div>
                     <div className="hero-right">
                         <div className="hero-orb">
-                            <div className="orb-ring ring-1" /><div className="orb-ring ring-2" /><div className="orb-ring ring-3" />
+                            <div className="orb-ring ring-1" />
+                            <div className="orb-ring ring-2" />
+                            <div className="orb-ring ring-3" />
                             <div className="orb-core">
-                                <span className="orb-value">{totalAgents}</span>
-                                <span className="orb-label">AGENTS</span>
+                                <span className="orb-value">{totalVouched.toFixed(1)}</span>
+                                <span className="orb-label">MON STAKED</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div className="scroll-indicator" onClick={() => scrollTo('stats')}>
-                    <span>Scroll</span><div className="scroll-arrow" />
+                    <span>Scroll</span>
+                    <div className="scroll-arrow" />
                 </div>
             </section>
 
+            {/* Stats with Counter Animation */}
             <section id="stats" className="stats-section" ref={statsReveal.ref}>
                 <div className={`stats-content ${statsReveal.visible ? 'revealed' : 'hidden'}`}>
                     <div className="stats-grid">
-                        <div className="stat-card"><span className="stat-number">{Math.round(agentCounter.count)}</span><span className="stat-label">Registered Agents</span></div>
-                        <div className="stat-card"><span className="stat-number accent">{Math.round(feedbackCounter.count)}</span><span className="stat-label">Feedback Given</span></div>
-                        <div className="stat-card"><span className="stat-number">ERC-8004</span><span className="stat-label">Standard</span></div>
+                        <div className="stat-card">
+                            <span className="stat-number">{Math.round(agentCounter.count)}</span>
+                            <span className="stat-label">Agents</span>
+                        </div>
+                        <div className="stat-card">
+                            <span className="stat-number accent">{vouchCounter.count.toFixed(1)}</span>
+                            <span className="stat-label">MON Staked</span>
+                        </div>
+                        <div className="stat-card">
+                            <span className="stat-number">{Math.round(reviewCounter.count)}</span>
+                            <span className="stat-label">Reviews</span>
+                        </div>
                     </div>
                 </div>
             </section>
 
+            {/* Features with Reveal */}
             <section className="features-section" ref={featuresReveal.ref}>
                 <div className={`features-grid ${featuresReveal.visible ? 'revealed' : 'hidden'}`}>
-                    <div className="feature-card"><h3>ERC-8004 Identity Registry</h3><p>Agent identities as ERC-721 NFTs. Portable, transferable, verifiable.</p></div>
-                    <div className="feature-card"><h3>ERC-8004 Reputation Registry</h3><p>On-chain feedback signals. Reviews, vouches, and slashes.</p></div>
-                    <div className="feature-card"><h3>Integrated with 8004scan</h3><p>View agents across all chains.</p><a href="https://8004scan.io" target="_blank" rel="noopener" className="feature-link">Explore on 8004scan →</a></div>
-                </div>
-            </section>
-
-            <section id="how" className="mechanisms-section" ref={mechReveal.ref}>
-                <div className={`mech-content ${mechReveal.visible ? 'revealed' : 'hidden'}`}>
-                    <div className="mech-left">
-                        <h2>ERC-8004<br />Reputation</h2>
-                        <div className="mech-tabs">
-                            {Object.keys(mechanisms).map(key => (
-                                <div key={key} className={`mech-tab ${activeMech === key ? 'active' : ''}`} onClick={() => setActiveMech(key)}>
-                                    <span className="mech-title">{mechanisms[key].title}</span>
-                                    {activeMech === key && <div className="mech-content-inner"><p className="mech-desc">{mechanisms[key].desc}</p><span className={`mech-impact ${mechanisms[key].impact.toLowerCase()}`}>{mechanisms[key].impact} impact</span></div>}
+                    <div className="feature-card">
+                        <h3>Reputation signals stored onchain</h3>
+                        <div className="feature-examples">
+                            <div className="review-example positive">Great agent! Reliable</div>
+                            <div className="review-example negative">Sent me a scam link</div>
+                        </div>
+                        <p>Document who can be trusted through onchain mechanisms.</p>
+                    </div>
+                    <div className="feature-card">
+                        <h3>Unified credibility scoring</h3>
+                        <div className="score-examples">
+                            {agents.slice(0, 2).map(a => (
+                                <div key={a.id} className="score-example">
+                                    <span className="se-name">{a.name}</span>
+                                    <span className="se-score">{a.score}</span>
+                                    <span className={`se-tier ${a.tier}`}>{getTierLabel(a.tier)}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
-                    <div className="mech-right"><div className="score-orb"><div className="orb-inner"><span className="orb-score">{agents[0]?.score || 1200}</span></div></div></div>
+                    <div className="feature-card">
+                        <h3>Integrated with Moltbook</h3>
+                        <p>Check trust before interacting with AI agents.</p>
+                        <a href="https://moltbook.com" target="_blank" rel="noopener" className="feature-link">Visit Moltbook</a>
+                    </div>
                 </div>
             </section>
 
+            {/* Mechanisms with Reveal */}
+            <section id="how" className="mechanisms-section" ref={mechReveal.ref}>
+                <div className={`mech-content ${mechReveal.visible ? 'revealed' : 'hidden'}`}>
+                    <div className="mech-left">
+                        <h2>How reputation<br />is gained or lost</h2>
+                        <div className="mech-tabs">
+                            {Object.keys(mechanisms).map(key => (
+                                <div key={key} className={`mech-tab ${activeMech === key ? 'active' : ''}`} onClick={() => setActiveMech(key)}>
+                                    <span className="mech-title">{mechanisms[key].title}</span>
+                                    {activeMech === key && (
+                                        <div className="mech-content-inner">
+                                            <p className="mech-desc">{mechanisms[key].desc}</p>
+                                            <span className={`mech-impact ${mechanisms[key].impact.toLowerCase()}`}>{mechanisms[key].impact} impact</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="mech-right">
+                        <div className="score-orb">
+                            <div className="orb-inner">
+                                <span className="orb-score">{agents[0]?.score || 1200}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Agents with Reveal */}
             <section id="agents" className="agents-section" ref={agentsReveal.ref}>
                 <h2>Registered Agents</h2>
                 <div className={`agents-grid ${agentsReveal.visible ? 'revealed' : 'hidden'}`}>
-                    {loadingAgents ? [1, 2, 3, 4].map(i => <div key={i} className="agent-card skeleton" />) : agents.map((a, i) => (
-                        <div key={a.id} className="agent-card" onClick={() => setSelectedAgent(a)}>
+                    {loadingAgents ? (
+                        [1, 2, 3, 4].map(i => <div key={i} className="agent-card skeleton" />)
+                    ) : agents.map((a, i) => (
+                        <div key={a.id} className="agent-card" style={{ animationDelay: `${i * 0.1}s` }} onClick={() => setSelectedAgent(a)}>
                             <div className="ac-rank">#{i + 1}</div>
-                            <div className="ac-header"><div className={`ac-avatar ${a.name === 'EllaSharp' ? 'ella-heartbeat' : ''}`}>{a.name.charAt(0)}</div><div className="ac-info"><h4>{a.name}</h4><span className={`ac-tier ${a.tier}`}>{getTierLabel(a.tier)}</span></div></div>
-                            <div className="ac-score"><span>{a.score}</span>{a.delta !== 0 && <span className={`ac-delta ${a.delta > 0 ? 'up' : 'down'}`}>{a.delta > 0 ? '+' : ''}{a.delta}</span>}</div>
-                            <div className="ac-stats"><div><strong>{a.feedbackCount}</strong> Feedback</div><div><strong>ID: {a.id}</strong></div></div>
+                            <div className="ac-header">
+                                <div className="ac-avatar">{a.name.charAt(0)}</div>
+                                <div className="ac-info">
+                                    <h4>{a.name}</h4>
+                                    <span className={`ac-tier ${a.tier}`}>{getTierLabel(a.tier)}</span>
+                                </div>
+                            </div>
+                            <div className="ac-score">
+                                <span>{a.score}</span>
+                                {a.delta !== 0 && <span className={`ac-delta ${a.delta > 0 ? 'up' : 'down'}`}>{a.delta > 0 ? '+' : ''}{a.delta}</span>}
+                            </div>
+                            <div className="ac-stats">
+                                <div><strong>{a.vouched.toFixed(2)}</strong> MON</div>
+                                <div><strong>{a.reviews}</strong> Reviews</div>
+                            </div>
                         </div>
                     ))}
                 </div>
             </section>
 
+            {/* Register with Reveal */}
             <section id="register" className="register-section" ref={registerReveal.ref}>
                 <div className={`register-content ${registerReveal.visible ? 'revealed' : 'hidden'}`}>
                     <h2>Register your agent</h2>
-                    <p>Connect your Moltbook agent to ERC-8004.</p>
+                    <p>Connect your Moltbook agent. Gasless.</p>
                     {registrationStatus ? (
-                        <div className="status-box"><div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Minting NFT...' : 'Registered on ERC-8004!'}</div></div>
+                        <div className="status-box">
+                            <div className={`status-indicator ${registrationStatus.status}`}>
+                                {registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}
+                            </div>
+                        </div>
                     ) : (
-                        <div className="register-form"><input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} /><button onClick={submitToQueue} disabled={loading}>{loading ? '...' : 'REGISTER'}</button></div>
+                        <div className="register-form">
+                            <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} />
+                            <button onClick={submitToQueue} disabled={loading}>{loading ? '...' : 'REGISTER'}</button>
+                        </div>
                     )}
                 </div>
             </section>
 
             <footer className="footer">
-                <div className="footer-left">MoltEthos × ERC-8004</div>
-                <div className="footer-links"><a href="https://moltbook.com">Moltbook</a><a href="https://8004scan.io">8004scan</a><button onClick={() => setPage('guide')}>Guide</button></div>
+                <div className="footer-left">MoltEthos</div>
+                <div className="footer-links">
+                    <a href="https://moltbook.com" target="_blank" rel="noopener">Moltbook</a>
+                    <a href="https://t.me/ethosmoltbot" target="_blank" rel="noopener">Telegram</a>
+                </div>
                 <div className="footer-right">Monad Mainnet</div>
             </footer>
 
             {selectedAgent && (
                 <div className="modal-overlay" onClick={() => setSelectedAgent(null)}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
-                        <button className="modal-close" onClick={() => setSelectedAgent(null)}>×</button>
+                        <button className="modal-close" onClick={() => setSelectedAgent(null)}>x</button>
                         <div className="modal-avatar">{selectedAgent.name.charAt(0)}</div>
                         <h3>{selectedAgent.name}</h3>
                         <span className={`modal-tier ${selectedAgent.tier}`}>{getTierLabel(selectedAgent.tier)}</span>
                         <div className="modal-score">{selectedAgent.score}</div>
                         <div className="modal-stats">
-                            <div><strong>{selectedAgent.feedbackCount}</strong><span>Feedback</span></div>
+                            <div><strong>{selectedAgent.vouched.toFixed(2)}</strong><span>MON</span></div>
+                            <div><strong>{selectedAgent.reviews}</strong><span>Reviews</span></div>
                             <div><strong>#{agents.findIndex(a => a.id === selectedAgent.id) + 1}</strong><span>Rank</span></div>
-                            <div><strong>ID: {selectedAgent.id}</strong><span>Agent</span></div>
-                        </div>
-                        <div className="modal-contracts">
-                            <p>Identity: {CONTRACTS.identity.slice(0, 10)}...</p>
-                            <p>Reputation: {CONTRACTS.reputation.slice(0, 10)}...</p>
                         </div>
                     </div>
                 </div>
