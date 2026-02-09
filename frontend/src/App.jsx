@@ -45,6 +45,24 @@ const KNOWN_AGENTS = [
     { id: 4, name: "TestAgent3Eth" }
 ]
 
+const KNOWN_REVIEWERS = [
+  "0x6446ad9821021eeb9f85b8a18b0153d58166d161",
+  "0x8df64bacf6b70f7787f8d14429b258b3ff958ec1",
+  "0xe4cdd1ad7fae7d54441ef12db1a68ab9a4c2d7b5",
+  "0x734b0e337bfa7d4764f4b806b4245dd312ddf134",
+  "0xcaf22005b777c21fdf7b7afebd0da8dcd0331f11",
+  "0x166e66cf69431dbf18c2437e68fc0e4093e69cdf",
+  "0x25b993d1c494b5ce6612085f406f2a2e2063134b",
+  "0xc0a7d7b0867b004d71e4230d719f35d7a71d5e43",
+  "0xb6e8b2692cdc3a31280dca8e9c8b88bb5e436f24",
+  "0xb1df90bb4fd38d44dacdbe6272761954e74b9b05",
+  "0xfc0cbfbc5245fd333efba768ceeedb3ef66d602e",
+  "0x1be93c700ddc596d701e8f2106b8f9166c625adb",
+  "0x59e3a02e047dd9bbcbf90a6abd0cdebd347d70c6",
+  "0x75b583c518215e272f3c0a3bcc1b27012f294adc",
+  "0xEa0b21FB2441464f4920CE3E34D478235605816B",
+]
+
 function useTypewriter(text, speed = 80) {
     const [displayed, setDisplayed] = useState('')
     const [done, setDone] = useState(false)
@@ -586,40 +604,75 @@ function App() {
         setActivityFeed(prev => [{ id: Date.now(), text }, ...prev].slice(0, 5))
     }
 
-    const loadAgents = async () => {
-        setLoadingAgents(true)
-        try {
-            const provider = new ethers.JsonRpcProvider(RPC_URL)
-            const reputation = new ethers.Contract(ERC8004.reputation, REPUTATION_ABI, provider)
+const loadAgents = async () => {
+  setLoadingAgents(true)
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC_URL)
+    const reputation = new ethers.Contract(ERC8004.reputation, REPUTATION_ABI, provider)
+    const scoreContract = new ethers.Contract(LEGACY_CONTRACTS.score, SCORE_ABI, provider)
+    const vouchContract = new ethers.Contract(LEGACY_CONTRACTS.vouch, VOUCH_ABI, provider)
+    const reviewContract = new ethers.Contract(LEGACY_CONTRACTS.review, REVIEW_ABI, provider)
 
-            const list = []
-            let vSum = 0, rSum = 0
+    const list = []
+    let vSum = 0, rSum = 0
 
-            for (const agent of KNOWN_AGENTS) {
-                let score = 1200, count = 0, summaryValue = 0
-                try {
-                    // Fetch ERC-8004 summary
-                    const summary = await reputation.getSummary(agent.id, [], "", "")
-                    count = Number(summary.count)
-                    summaryValue = Number(summary.summaryValue)
-                    // Map -1/0/+1 to 1200-base score for display
-                    score = 1200 + (summaryValue * 10)
-                } catch (e) { console.warn(`Failed to fetch 8004 data for ${agent.name}`, e) }
+    for (const agent of KNOWN_AGENTS) {
+      let score = 1200
+      let erc8004Count = 0
+      let erc8004Value = 0
+      let legacyVouched = 0
+      let legacyReviews = 0
 
-                vSum += (summaryValue > 0 ? summaryValue * 0.1 : 0)
-                rSum += count
-                const tier = score >= 1400 ? 'trusted' : score >= 1200 ? 'neutral' : 'untrusted'
-                const prev = prevScores.current[agent.id] || score
-                const delta = score - prev
-                prevScores.current[agent.id] = score
-                list.push({ ...agent, score, vouched: vSum, reviews: count, tier, delta })
-            }
-            setAgents(list.sort((a, b) => b.score - a.score))
-            setTotalVouched(vSum)
-            setTotalReviews(rSum)
-        } catch (e) { console.error(e) }
-        setLoadingAgents(false)
+      try {
+        const summary = await reputation.getSummary(
+          agent.id, KNOWN_REVIEWERS, "", ""
+        )
+        erc8004Count = Number(summary.count)
+        erc8004Value = Number(summary.summaryValue)
+      } catch (e) {
+        console.warn(`8004 failed for ${agent.name}:`, e.reason)
+      }
+
+      try {
+        score = Number(await scoreContract.calculateScore(agent.id))
+      } catch (e) {
+        score = 1200 + (erc8004Value * 10)
+      }
+
+      try {
+        legacyVouched = Number(ethers.formatEther(
+          await vouchContract.totalVouched(agent.id)
+        ))
+      } catch (e) {}
+
+      try {
+        legacyReviews = Number(await reviewContract.getReviewCount(agent.id))
+      } catch (e) {}
+
+      const totalFeedback = legacyReviews + erc8004Count
+      vSum += legacyVouched
+      rSum += totalFeedback
+
+      const tier = score >= 1400 ? 'trusted'
+        : score >= 1200 ? 'neutral' : 'untrusted'
+      const prev = prevScores.current[agent.id] || score
+      const delta = score - prev
+      prevScores.current[agent.id] = score
+
+      list.push({
+        ...agent, score,
+        vouched: legacyVouched,
+        reviews: totalFeedback,
+        tier, delta
+      })
     }
+
+    setAgents(list.sort((a, b) => b.score - a.score))
+    setTotalVouched(vSum)
+    setTotalReviews(rSum)
+  } catch (e) { console.error(e) }
+  setLoadingAgents(false)
+}
 
     const submitToQueue = async () => {
         if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Invalid API Key'); return }
