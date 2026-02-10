@@ -63,6 +63,11 @@ const KNOWN_REVIEWERS = [
   "0xEa0b21FB2441464f4920CE3E34D478235605816B",
 ]
 
+// 8004scan API
+const SCAN_API = "https://www.8004scan.io/api/v1"
+const SCAN_KEY = "8004_goX1jSjDTgxVDdXwGSxm5L_5RV8yKlI7_77f8f10a"
+const CHAIN_ID = 143 // Monad mainnet
+
 function useTypewriter(text, speed = 80) {
     const [displayed, setDisplayed] = useState('')
     const [done, setDone] = useState(false)
@@ -592,11 +597,33 @@ function App() {
         }
     }, [registrationId])
 
+    // Real 8004scan event poller (replaces fake random activity feed)
     useEffect(() => {
-        const activities = ['EllaSharp reviewed MoltEthosAgent', 'New vouch: 0.1 MON', 'Score updated', 'ERC-8004 feedback submitted']
-        const interval = setInterval(() => {
-            addActivity(activities[Math.floor(Math.random() * activities.length)])
-        }, 8000)
+        let lastSeen = new Set()
+        const pollFeedback = async () => {
+            try {
+                for (const agent of KNOWN_AGENTS) {
+                    const res = await fetch(
+                        `${SCAN_API}/agents/${CHAIN_ID}/${agent.id}`,
+                        { headers: { 'X-API-Key': SCAN_KEY } }
+                    )
+                    const data = await res.json()
+                    if (data.total_feedbacks > 0) {
+                        const key = `${agent.id}-${data.total_feedbacks}`
+                        if (!lastSeen.has(key)) {
+                            lastSeen.add(key)
+                            addActivity(
+                                `${agent.name}: ${data.total_feedbacks} feedback, avg score ${data.average_score}`
+                            )
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Feed poll failed:', e)
+            }
+        }
+        pollFeedback()
+        const interval = setInterval(pollFeedback, 15000)
         return () => clearInterval(interval)
     }, [])
 
@@ -612,6 +639,7 @@ const loadAgents = async () => {
     const scoreContract = new ethers.Contract(LEGACY_CONTRACTS.score, SCORE_ABI, provider)
     const vouchContract = new ethers.Contract(LEGACY_CONTRACTS.vouch, VOUCH_ABI, provider)
     const reviewContract = new ethers.Contract(LEGACY_CONTRACTS.review, REVIEW_ABI, provider)
+    const identityContract = new ethers.Contract(ERC8004.identity, IDENTITY_ABI, provider)
 
     const list = []
     let vSum = 0, rSum = 0
@@ -622,6 +650,7 @@ const loadAgents = async () => {
       let erc8004Value = 0
       let legacyVouched = 0
       let legacyReviews = 0
+      let owner = null
 
       try {
         const summary = await reputation.getSummary(
@@ -632,6 +661,10 @@ const loadAgents = async () => {
       } catch (e) {
         console.warn(`8004 failed for ${agent.name}:`, e.reason)
       }
+
+      try {
+        owner = await identityContract.ownerOf(agent.id)
+      } catch (e) {}
 
       try {
         score = Number(await scoreContract.calculateScore(agent.id))
@@ -649,6 +682,16 @@ const loadAgents = async () => {
         legacyReviews = Number(await reviewContract.getReviewCount(agent.id))
       } catch (e) {}
 
+      // Enrich with 8004scan data
+      let scanData = null
+      try {
+        const scanRes = await fetch(
+          `${SCAN_API}/agents/${CHAIN_ID}/${agent.id}`,
+          { headers: { 'X-API-Key': SCAN_KEY } }
+        )
+        scanData = await scanRes.json()
+      } catch (e) {}
+
       const totalFeedback = legacyReviews + erc8004Count
       vSum += legacyVouched
       rSum += totalFeedback
@@ -660,10 +703,14 @@ const loadAgents = async () => {
       prevScores.current[agent.id] = score
 
       list.push({
-        ...agent, score,
+        ...agent, score, owner,
         vouched: legacyVouched,
         reviews: totalFeedback,
-        tier, delta
+        tier, delta,
+        scanScore: scanData?.average_score || 0,
+        scanFeedbacks: scanData?.total_feedbacks || 0,
+        description: scanData?.description || null,
+        imageUrl: scanData?.image_url || null,
       })
     }
 
@@ -847,8 +894,10 @@ const loadAgents = async () => {
                             <div><strong>#{agents.findIndex(a => a.id === selectedAgent.id) + 1}</strong><span>Rank</span></div>
                         </div>
                         <div className="modal-contracts">
-                            <p>Identity: 0x8004A169...9a432</p>
-                            <p>Reputation: 0x8004BAa1...9dE9b63</p>
+                            <p>Owner: {selectedAgent.owner ? `${selectedAgent.owner.slice(0, 6)}...${selectedAgent.owner.slice(-4)}` : 'Unknown'}</p>
+                            <p>Agent ID: {selectedAgent.id}</p>
+                            <p>8004scan Score: {selectedAgent.scanScore}</p>
+                            <p>Total Feedbacks: {selectedAgent.scanFeedbacks}</p>
                         </div>
                     </div>
                 </div>
