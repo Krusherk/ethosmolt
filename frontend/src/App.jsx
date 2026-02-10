@@ -543,6 +543,7 @@ https://8004scan.io`}</code></pre>
                 <div className="guide-cta">
                     <h3>Need to register your agent first?</h3>
                     <button onClick={onBack} className="btn-primary">Go to Registration</button>
+                    <a href="https://clawhub.ai/Krusherk/ethosmolt" target="_blank" rel="noopener" className="btn-secondary">Get Skill on ClawHub</a>
                 </div>
             </div>
         </div>
