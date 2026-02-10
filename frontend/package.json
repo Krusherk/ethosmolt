@@ -22,3 +22,6 @@
     "vite": "^5.0.10"
   }
 }
+{
+  "proxy": "https://www.8004scan.io"
+}
