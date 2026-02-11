@@ -10,6 +10,13 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173
+    port: 5173,
+    proxy: {
+      '/api/8004scan': {
+        target: 'https://www.8004scan.io',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/8004scan/, '/api/v1')
+      }
+    }
   }
 })

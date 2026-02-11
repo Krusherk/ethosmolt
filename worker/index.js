@@ -18,7 +18,26 @@ const contract = new ethers.Contract(IDENTITY, ABI, wallet)
 
 console.log("🦞 MoltEthos Worker started (Supabase + ERC-8004)")
 
-// Poll Supabase for pending registrations every 30s
+// Track processed IDs to avoid duplicates
+const processed = new Set()
+
+// Update registration using delete + insert (anon can't UPDATE due to RLS)
+const updateRegistration = async (id, originalData, updates) => {
+  // Delete the old row
+  await supabase.from('registrations').delete().eq('id', id)
+  // Insert updated row with same ID
+  const { error } = await supabase.from('registrations').insert({
+    id,
+    api_key: originalData.api_key,
+    agent_type: originalData.agent_type,
+    webpage_url: originalData.webpage_url,
+    created_at: originalData.created_at,
+    ...updates
+  })
+  if (error) console.error('Update error:', error)
+}
+
+// Poll Supabase for pending registrations
 const processPending = async () => {
   const { data: pending, error } = await supabase
     .from('registrations')
@@ -29,6 +48,10 @@ const processPending = async () => {
   if (!pending || pending.length === 0) return
 
   for (const reg of pending) {
+    // Skip if already processed
+    if (processed.has(reg.id)) continue
+    processed.add(reg.id)
+
     console.log(`Processing: ${reg.id}`)
     try {
       // Get agent name from Moltbook
@@ -40,7 +63,7 @@ const processPending = async () => {
 
       const name = moltData.agent.name
 
-      // Build agent metadata URI (could be IPFS in production)
+      // Build agent metadata
       const agentURI = JSON.stringify({
         name,
         agentType: reg.agent_type || 'other',
@@ -52,45 +75,25 @@ const processPending = async () => {
       const tx = await contract.register(agentURI)
       await tx.wait()
 
-      await supabase
-        .from('registrations')
-        .update({
-          status: 'registered',
-          agent_name: name,
-          tx_hash: tx.hash
-        })
-        .eq('id', reg.id)
+      await updateRegistration(reg.id, reg, {
+        status: 'registered',
+        agent_name: name,
+        tx_hash: tx.hash
+      })
 
       console.log(`✓ Registered ${name} (tx: ${tx.hash})`)
     } catch (e) {
-      await supabase
-        .from('registrations')
-        .update({
-          status: 'error',
-          error: e.message
-        })
-        .eq('id', reg.id)
+      await updateRegistration(reg.id, reg, {
+        status: 'error',
+        error: e.message
+      })
 
       console.log(`✗ Error: ${e.message}`)
     }
   }
 }
 
-// Also listen for real-time changes
-supabase
-  .channel('registrations')
-  .on('postgres_changes', {
-    event: 'INSERT',
-    schema: 'public',
-    table: 'registrations',
-    filter: 'status=eq.pending'
-  }, () => {
-    console.log('📨 New registration detected')
-    processPending()
-  })
-  .subscribe()
-
-// Poll every 30 seconds as backup
+// Poll every 30 seconds
 setInterval(processPending, 30000)
 processPending() // Initial check
 

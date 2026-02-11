@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { submitRegistration, watchRegistration } from './supabase'
 import './index.css'
 
-// 8004scan API
-const SCAN_API = "https://www.8004scan.io/api/v1"
+// 8004scan API — proxied through Vite in dev to avoid CORS
+const SCAN_API = "/api/8004scan"
 const SCAN_KEY = "8004_goX1jSjDTgxVDdXwGSxm5L_5RV8yKlI7_77f8f10a"
 
 // ERC-8004 Official Contracts (Monad Mainnet)
@@ -414,8 +414,8 @@ function App() {
             })
             const data = await res.json()
 
-            // Handle different API response formats
-            const agentList = Array.isArray(data) ? data : (data.agents || data.data || [])
+            // 8004scan returns { items: [...] }
+            const agentList = data.items || data.agents || (Array.isArray(data) ? data : [])
 
             const list = []
             let vSum = 0, rSum = 0
@@ -424,11 +424,11 @@ function App() {
                 const id = agent.token_id || agent.id || agent.agentId
                 const name = agent.name || agent.agent_name || `Agent #${id}`
                 const description = agent.description || ''
-                const totalFeedbacks = agent.total_feedbacks || agent.feedbackCount || 0
-                const avgScore = agent.average_score || agent.avgScore || 0
-                const owner = agent.owner || agent.wallet || ''
-                const agentTypeVal = agent.agent_type || agent.type || inferType(description)
-                const webpageUrlVal = agent.webpage_url || agent.website || ''
+                const totalFeedbacks = agent.total_feedbacks || 0
+                const avgScore = agent.average_score || agent.total_score || 0
+                const owner = agent.owner_address || agent.agent_wallet || ''
+                const agentTypeVal = agent.agent_type || inferType(description)
+                const webpageUrlVal = agent.webpage_url || ''
                 const chainId = agent.chain_id || 143
 
                 // Calculate a display score from the average
