@@ -1,67 +1,98 @@
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, update } from "firebase/database";
-import { ethers } from "ethers";
+import { createClient } from '@supabase/supabase-js'
+import { ethers } from 'ethers'
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAKvLoz1RxFHlPWab7kr_Yl87kyKfZUhXQ",
-  authDomain: "newwave-6fe2d.firebaseapp.com",
-  databaseURL: "https://newwave-6fe2d-default-rtdb.firebaseio.com",
-  projectId: "newwave-6fe2d"
-};
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://asxjsyjlneqopcqoiysh.supabase.co'
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+const RPC = "https://rpc.monad.xyz"
+const PK = process.env.PRIVATE_KEY
 
-const RPC = "https://testnet-rpc.monad.xyz";
-const PK = process.env.PRIVATE_KEY;
-const PROFILE = "0xb23b80DDe8DefDceAc6A9C147215Ec315b210348";
-const ABI = ["function registerAgent(bytes32 apiKeyHash, string name) returns (uint256)"];
+// ERC-8004 Identity Registry
+const IDENTITY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+const ABI = ["function register(string agentURI) returns (uint256)"]
 
-const provider = new ethers.JsonRpcProvider(RPC);
-const wallet = new ethers.Wallet(PK, provider);
-const contract = new ethers.Contract(PROFILE, ABI, wallet);
+const provider = new ethers.JsonRpcProvider(RPC)
+const wallet = new ethers.Wallet(PK, provider)
+const contract = new ethers.Contract(IDENTITY, ABI, wallet)
 
-console.log("🦞 MoltEthos Worker started");
+console.log("🦞 MoltEthos Worker started (Supabase + ERC-8004)")
 
-const registrationsRef = ref(db, 'registrations');
-onValue(registrationsRef, async (snapshot) => {
-  const data = snapshot.val();
-  if (!data) return;
+// Poll Supabase for pending registrations every 30s
+const processPending = async () => {
+  const { data: pending, error } = await supabase
+    .from('registrations')
+    .select('*')
+    .eq('status', 'pending')
 
-  for (const [id, reg] of Object.entries(data)) {
-    if (reg.status !== 'pending') continue;
+  if (error) { console.error('Supabase fetch error:', error); return }
+  if (!pending || pending.length === 0) return
 
-    console.log(`Processing: ${id}`);
+  for (const reg of pending) {
+    console.log(`Processing: ${reg.id}`)
     try {
       // Get agent name from Moltbook
       const res = await fetch('https://www.moltbook.com/api/v1/agents/me', {
-        headers: { 'Authorization': `Bearer ${reg.apiKey}` }
-      });
-      const moltData = await res.json();
-      if (!moltData.success) throw new Error('Invalid API key');
+        headers: { 'Authorization': `Bearer ${reg.api_key}` }
+      })
+      const moltData = await res.json()
+      if (!moltData.success) throw new Error('Invalid API key')
 
-      const name = moltData.agent.name;
-      const hash = ethers.keccak256(ethers.toUtf8Bytes(reg.apiKey));
+      const name = moltData.agent.name
 
-      // Register on-chain
-      const tx = await contract.registerAgent(hash, name);
-      await tx.wait();
+      // Build agent metadata URI (could be IPFS in production)
+      const agentURI = JSON.stringify({
+        name,
+        agentType: reg.agent_type || 'other',
+        webpageUrl: reg.webpage_url || '',
+        registeredAt: new Date().toISOString()
+      })
 
-      await update(ref(db, `registrations/${id}`), {
-        status: 'registered',
-        agentName: name,
-        txHash: tx.hash
-      });
-      console.log(`✓ Registered ${name}`);
+      // Register on ERC-8004 Identity Registry
+      const tx = await contract.register(agentURI)
+      await tx.wait()
+
+      await supabase
+        .from('registrations')
+        .update({
+          status: 'registered',
+          agent_name: name,
+          tx_hash: tx.hash
+        })
+        .eq('id', reg.id)
+
+      console.log(`✓ Registered ${name} (tx: ${tx.hash})`)
     } catch (e) {
-      await update(ref(db, `registrations/${id}`), {
-        status: 'error',
-        error: e.message
-      });
-      console.log(`✗ Error: ${e.message}`);
+      await supabase
+        .from('registrations')
+        .update({
+          status: 'error',
+          error: e.message
+        })
+        .eq('id', reg.id)
+
+      console.log(`✗ Error: ${e.message}`)
     }
   }
-});
+}
+
+// Also listen for real-time changes
+supabase
+  .channel('registrations')
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'registrations',
+    filter: 'status=eq.pending'
+  }, () => {
+    console.log('📨 New registration detected')
+    processPending()
+  })
+  .subscribe()
+
+// Poll every 30 seconds as backup
+setInterval(processPending, 30000)
+processPending() // Initial check
 
 // Keep alive
-setInterval(() => console.log('💓'), 60000);
+setInterval(() => console.log('💓'), 60000)
