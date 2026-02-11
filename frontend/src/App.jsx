@@ -355,6 +355,7 @@ function App() {
     const [page, setPage] = useState('home')
     const [agents, setAgents] = useState([])
     const [moltbookApiKey, setMoltbookApiKey] = useState('')
+    const [agentName, setAgentName] = useState('')
     const [agentType, setAgentType] = useState('reputation')
     const [webpageUrl, setWebpageUrl] = useState('')
     const [loading, setLoading] = useState(false)
@@ -491,20 +492,20 @@ function App() {
     }
 
     const submitToQueue = async () => {
+        if (!agentName.trim()) { alert('Please enter your agent name'); return }
         if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Invalid API Key'); return }
         setLoading(true)
         try {
-            const res = await fetch('https://www.moltbook.com/api/v1/agents/me', { headers: { 'Authorization': `Bearer ${moltbookApiKey}` } })
-            const data = await res.json()
-            if (!data.success) { alert('Invalid API Key'); setLoading(false); return }
-
-            // Submit to Supabase registration queue
-            const regId = await submitRegistration(moltbookApiKey, agentType, webpageUrl)
+            // Submit to Supabase registration queue with agent name
+            const regId = await submitRegistration(moltbookApiKey, agentName.trim(), agentType, webpageUrl)
             setRegistrationId(regId)
-            setRegistrationStatus({ status: 'pending', agent_name: data.agent?.name })
+            setRegistrationStatus({ status: 'pending', agent_name: agentName.trim() })
             setMoltbookApiKey('')
+            setAgentName('')
             setWebpageUrl('')
-            addActivity(`ERC-8004 registration queued for ${data.agent?.name}`)
+            addActivity(`ERC-8004 registration queued for ${agentName.trim()}`)
+            // Reload agents list
+            setTimeout(loadAgents, 1000)
         } catch (e) { alert('Error: ' + e.message) }
         setLoading(false)
     }
@@ -650,6 +651,7 @@ function App() {
                         <div className="status-box"><div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}</div></div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <input type="text" placeholder="Agent Name (use your Moltbook agent name)" value={agentName} onChange={(e) => setAgentName(e.target.value)} style={{ padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px', width: '100%', boxSizing: 'border-box' }} />
                             <div className="register-form">
                                 <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} />
                                 <button onClick={submitToQueue} disabled={loading}>{loading ? '...' : 'REGISTER'}</button>

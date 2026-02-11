@@ -6,12 +6,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // Submit a new agent registration
-export const submitRegistration = async (apiKey, agentType, webpageUrl) => {
+export const submitRegistration = async (apiKey, agentName, agentType, webpageUrl) => {
     const { data, error } = await supabase
         .from('registrations')
         .insert({
             api_key: apiKey,
             status: 'pending',
+            agent_name: agentName || null,
             agent_type: agentType || null,
             webpage_url: webpageUrl || null
         })
@@ -75,12 +76,11 @@ export const updateRegistration = async (registrationId, updates) => {
     if (error) throw error
 }
 
-// Get all agents (registered ones for display)
+// Get all agents for display (pending + registered)
 export const getAllAgents = async () => {
     const { data, error } = await supabase
         .from('registrations')
         .select('*')
-        .eq('status', 'registered')
         .order('created_at', { ascending: false })
 
     if (error) throw error
