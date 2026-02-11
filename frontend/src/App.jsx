@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { submitRegistration, watchRegistration } from './supabase'
+import { submitRegistration, watchRegistration, getAllAgents } from './supabase'
 import './index.css'
 
 // 8004scan API — proxied through Vite in dev to avoid CORS
@@ -405,70 +405,55 @@ function App() {
         setActivityFeed(prev => [{ id: Date.now(), text }, ...prev].slice(0, 5))
     }
 
-    // Load agents dynamically from 8004scan API
+    // Load agents from our Supabase database
     const loadAgents = async () => {
         setLoadingAgents(true)
         try {
-            const res = await fetch(`${SCAN_API}/agents`, {
-                headers: { 'X-API-Key': SCAN_KEY }
-            })
-            const data = await res.json()
-
-            // 8004scan returns { items: [...] }
-            const agentList = data.items || data.agents || (Array.isArray(data) ? data : [])
+            const registeredAgents = await getAllAgents()
 
             const list = []
             let vSum = 0, rSum = 0
 
-            for (const agent of agentList) {
-                const id = agent.token_id || agent.id || agent.agentId
-                const name = agent.name || agent.agent_name || `Agent #${id}`
-                const description = agent.description || ''
-                const totalFeedbacks = agent.total_feedbacks || 0
-                const avgScore = agent.average_score || agent.total_score || 0
-                const owner = agent.owner_address || agent.agent_wallet || ''
-                const agentTypeVal = agent.agent_type || inferType(description)
+            for (const agent of registeredAgents) {
+                const id = agent.id
+                const name = agent.agent_name || 'Unknown Agent'
+                const agentTypeVal = agent.agent_type || 'other'
                 const webpageUrlVal = agent.webpage_url || ''
-                const chainId = agent.chain_id || 143
+                const txHash = agent.tx_hash || ''
 
-                // Calculate a display score from the average
-                const score = 1200 + Math.round(avgScore * 100)
-                const tier = score >= 1400 ? 'trusted' : score >= 1200 ? 'neutral' : 'untrusted'
+                // Base score for registered agents
+                const score = 1200
+                const tier = 'neutral'
                 const prev = prevScores.current[id] || score
                 const delta = score - prev
                 prevScores.current[id] = score
 
-                vSum += (avgScore > 0 ? avgScore * 0.1 : 0)
-                rSum += totalFeedbacks
-
                 list.push({
                     id,
                     name,
-                    description,
+                    description: '',
                     score,
                     tier,
                     delta,
-                    vouched: avgScore > 0 ? avgScore * 0.1 : 0,
-                    reviews: totalFeedbacks,
-                    owner,
+                    vouched: 0,
+                    reviews: 0,
+                    owner: '',
                     agentType: agentTypeVal,
                     webpageUrl: webpageUrlVal,
-                    chainId
+                    txHash,
+                    chainId: 143
                 })
             }
 
-            // Sort by score descending
             setAgents(list.sort((a, b) => b.score - a.score))
             setTotalVouched(vSum)
             setTotalReviews(rSum)
 
-            // Add activity for first load
             if (list.length > 0 && activityFeed.length === 0) {
-                addActivity(`${list.length} agents loaded from 8004scan`)
+                addActivity(`${list.length} registered agents loaded`)
             }
         } catch (e) {
-            console.error('Failed to load agents from 8004scan:', e)
-            // Fallback: show empty state
+            console.error('Failed to load agents:', e)
             setAgents([])
         }
         setLoadingAgents(false)

@@ -74,3 +74,15 @@ export const updateRegistration = async (registrationId, updates) => {
 
     if (error) throw error
 }
+
+// Get all agents (registered ones for display)
+export const getAllAgents = async () => {
+    const { data, error } = await supabase
+        .from('registrations')
+        .select('*')
+        .eq('status', 'registered')
+        .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data || []
+}
