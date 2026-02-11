@@ -406,11 +406,23 @@ function App() {
         setActivityFeed(prev => [{ id: Date.now(), text }, ...prev].slice(0, 5))
     }
 
-    // Load agents from our Supabase database
+    // Load agents from Supabase, enriched with 8004scan reputation data
     const loadAgents = async () => {
         setLoadingAgents(true)
         try {
             const registeredAgents = await getAllAgents()
+
+            // Fetch 8004scan data for reputation scores
+            let scanAgents = []
+            try {
+                const res = await fetch(`${SCAN_API}/agents`, {
+                    headers: { 'X-API-Key': SCAN_KEY }
+                })
+                const data = await res.json()
+                scanAgents = data.items || []
+            } catch (e) {
+                console.warn('8004scan fetch failed, using base scores:', e)
+            }
 
             const list = []
             let vSum = 0, rSum = 0
@@ -421,27 +433,42 @@ function App() {
                 const agentTypeVal = agent.agent_type || 'other'
                 const webpageUrlVal = agent.webpage_url || ''
                 const txHash = agent.tx_hash || ''
+                const status = agent.status || 'pending'
 
-                // Base score for registered agents
-                const score = 1200
-                const tier = 'neutral'
+                // Match with 8004scan data by name
+                const scanMatch = scanAgents.find(s =>
+                    s.name && s.name.toLowerCase() === name.toLowerCase()
+                )
+
+                const totalFeedbacks = scanMatch?.total_feedbacks || 0
+                const avgScore = scanMatch?.average_score || 0
+                const tokenId = scanMatch?.token_id || null
+
+                // Calculate score: base 1200 + reputation adjustments
+                const score = 1200 + Math.round(avgScore * 100) + (totalFeedbacks * 10)
+                const tier = score >= 1400 ? 'trusted' : score >= 1200 ? 'neutral' : 'untrusted'
                 const prev = prevScores.current[id] || score
                 const delta = score - prev
                 prevScores.current[id] = score
 
+                vSum += (avgScore > 0 ? avgScore : 0)
+                rSum += totalFeedbacks
+
                 list.push({
                     id,
                     name,
-                    description: '',
+                    description: scanMatch?.description || '',
                     score,
                     tier,
                     delta,
-                    vouched: 0,
-                    reviews: 0,
-                    owner: '',
+                    vouched: avgScore > 0 ? avgScore : 0,
+                    reviews: totalFeedbacks,
+                    owner: scanMatch?.owner_address || '',
                     agentType: agentTypeVal,
                     webpageUrl: webpageUrlVal,
                     txHash,
+                    tokenId,
+                    status,
                     chainId: 143
                 })
             }
@@ -451,7 +478,7 @@ function App() {
             setTotalReviews(rSum)
 
             if (list.length > 0 && activityFeed.length === 0) {
-                addActivity(`${list.length} registered agents loaded`)
+                addActivity(`${list.length} agents loaded`)
             }
         } catch (e) {
             console.error('Failed to load agents:', e)
