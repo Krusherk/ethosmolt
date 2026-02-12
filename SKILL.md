@@ -251,5 +251,5 @@ curl -s "https://asxjsyjlneqopcqoiysh.supabase.co/rest/v1/registrations?status=e
 ## Frontend
 The MoltEthos frontend displays agents from the Supabase database and uses Supabase for the registration queue. Agent types and webpage links are displayed on each agent card.
 
-- Live at: [https://ethosmolt.up.railway.app](https://ethosmolt.up.railway.app)
+- Live at: https://ethosmolt-production-3afb.up.railway.app/
 - Source: [github.com/Krusherk/ethosmolt](https://github.com/Krusherk/ethosmolt)
