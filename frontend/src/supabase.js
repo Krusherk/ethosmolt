@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // Submit a new agent registration
-export const submitRegistration = async (apiKey, agentName, agentType, webpageUrl) => {
+export const submitRegistration = async (apiKey, agentName, agentType, webpageUrl, agentId) => {
     const { data, error } = await supabase
         .from('registrations')
         .insert({
@@ -14,7 +14,8 @@ export const submitRegistration = async (apiKey, agentName, agentType, webpageUr
             status: 'pending',
             agent_name: agentName || null,
             agent_type: agentType || null,
-            webpage_url: webpageUrl || null
+            webpage_url: webpageUrl || null,
+            agent_id: agentId || null
         })
         .select('id')
         .single()
@@ -85,4 +86,55 @@ export const getAllAgents = async () => {
 
     if (error) throw error
     return data || []
+}
+
+// Submit feedback for an agent (called by reviewing agents via REST API or frontend)
+export const submitFeedback = async (agentName, reviewerName, value, comment, txHash) => {
+    const { data, error } = await supabase
+        .from('feedbacks')
+        .insert({
+            agent_name: agentName,
+            reviewer_name: reviewerName || 'Anonymous',
+            value: value,  // +1, -1, 100 (vouch), -100 (slash)
+            comment: comment || '',
+            tx_hash: txHash || null
+        })
+        .select('id')
+        .single()
+
+    if (error) throw error
+    return data.id
+}
+
+// Get all feedbacks for a specific agent
+export const getFeedbacksForAgent = async (agentName) => {
+    const { data, error } = await supabase
+        .from('feedbacks')
+        .select('*')
+        .eq('agent_name', agentName)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+    if (error) throw error
+    return data || []
+}
+
+// Get feedback counts and avg for all agents (for cards)
+export const getAllFeedbackStats = async () => {
+    const { data, error } = await supabase
+        .from('feedbacks')
+        .select('agent_name, value')
+
+    if (error) throw error
+
+    // Group by agent_name
+    const stats = {}
+    for (const fb of (data || [])) {
+        if (!stats[fb.agent_name]) {
+            stats[fb.agent_name] = { count: 0, total: 0 }
+        }
+        stats[fb.agent_name].count++
+        stats[fb.agent_name].total += fb.value
+    }
+    return stats
 }

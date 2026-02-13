@@ -1,10 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { submitRegistration, watchRegistration, getAllAgents } from './supabase'
+import { submitRegistration, watchRegistration, getAllAgents, getAllFeedbackStats, getFeedbacksForAgent } from './supabase'
 import './index.css'
-
-// 8004scan API — proxied through Vite in dev to avoid CORS
-const SCAN_API = "/api/8004scan"
-const SCAN_KEY = "8004_goX1jSjDTgxVDdXwGSxm5L_5RV8yKlI7_77f8f10a"
 
 // ERC-8004 Official Contracts (Monad Mainnet)
 const ERC8004 = {
@@ -351,11 +347,84 @@ https://8004scan.io`}</code></pre>
     )
 }
 
+// Agent Modal with Feedback Display
+function AgentModal({ agent, agents, onClose, getTierLabel, getTypeLabel, getTypeColor }) {
+    const [feedbacks, setFeedbacks] = useState([])
+    const [loadingFb, setLoadingFb] = useState(true)
+
+    useEffect(() => {
+        const fetchFeedbacks = async () => {
+            setLoadingFb(true)
+            try {
+                const fbs = await getFeedbacksForAgent(agent.name)
+                setFeedbacks(fbs)
+            } catch (e) {
+                console.warn('Failed to load feedbacks:', e)
+            }
+            setLoadingFb(false)
+        }
+        fetchFeedbacks()
+    }, [agent.name])
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+                <button className="modal-close" onClick={onClose}>×</button>
+                <div className={`modal-avatar ${agent.name === 'EllaSharp' ? 'ella-heartbeat' : ''}`}>{agent.name.charAt(0)}</div>
+                <h3>{agent.name}</h3>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <span className={`modal-tier ${agent.tier}`}>{getTierLabel(agent.tier)}</span>
+                    {agent.agentType && <span style={{ fontSize: '11px', padding: '5px 12px', fontWeight: 600, letterSpacing: '0.05em', background: `${getTypeColor(agent.agentType)}20`, color: getTypeColor(agent.agentType) }}>{getTypeLabel(agent.agentType)}</span>}
+                </div>
+                <div className="modal-score">{agent.score}</div>
+                <div className="modal-stats">
+                    <div><strong>{agent.reviews}</strong><span>Feedback</span></div>
+                    <div><strong>#{agents.findIndex(a => a.id === agent.id) + 1}</strong><span>Rank</span></div>
+                </div>
+                <div className="modal-contracts">
+                    {agent.agentId && <p style={{ color: 'var(--accent)', fontWeight: 600 }}>ERC-8004 ID: #{agent.agentId}</p>}
+                    <p>Agent ID: {agent.id}</p>
+                    {agent.txHash && <p>Tx: {agent.txHash.slice(0, 10)}...{agent.txHash.slice(-6)}</p>}
+                    <p>Status: {agent.status}</p>
+                </div>
+
+                {/* Feedbacks Section */}
+                <div className="modal-feedbacks">
+                    <h4>Recent Feedback</h4>
+                    {loadingFb ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading...</p>
+                    ) : feedbacks.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No feedback yet</p>
+                    ) : (
+                        feedbacks.map(fb => (
+                            <div key={fb.id} className={`feedback-item ${fb.value < 0 ? 'negative' : ''}`}>
+                                <div>{fb.comment || (fb.value > 0 ? 'Positive feedback' : 'Negative feedback')}</div>
+                                <div className="feedback-meta">
+                                    <span>by {fb.reviewer_name}</span>
+                                    <span>{fb.value > 0 ? `+${fb.value}` : fb.value}</span>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                    {feedbacks.length > 0 && (
+                        <p className="feedback-count">{feedbacks.length} feedback{feedbacks.length !== 1 ? 's' : ''} total</p>
+                    )}
+                </div>
+
+                {agent.webpageUrl && (
+                    <a href={agent.webpageUrl} target="_blank" rel="noopener" className="btn-primary" style={{ display: 'inline-block', marginTop: '16px', textDecoration: 'none', fontSize: '12px' }}>Visit Agent →</a>
+                )}
+            </div>
+        </div>
+    )
+}
+
 function App() {
     const [page, setPage] = useState('home')
     const [agents, setAgents] = useState([])
     const [moltbookApiKey, setMoltbookApiKey] = useState('')
     const [agentName, setAgentName] = useState('')
+    const [agentId, setAgentId] = useState('')
     const [agentType, setAgentType] = useState('reputation')
     const [webpageUrl, setWebpageUrl] = useState('')
     const [loading, setLoading] = useState(false)
@@ -406,22 +475,18 @@ function App() {
         setActivityFeed(prev => [{ id: Date.now(), text }, ...prev].slice(0, 5))
     }
 
-    // Load agents from Supabase, enriched with 8004scan reputation data
+    // Load agents from Supabase, enriched with Supabase feedback data
     const loadAgents = async () => {
         setLoadingAgents(true)
         try {
             const registeredAgents = await getAllAgents()
 
-            // Fetch 8004scan data for reputation scores
-            let scanAgents = []
+            // Fetch feedback stats from Supabase
+            let feedbackStats = {}
             try {
-                const res = await fetch(`${SCAN_API}/agents`, {
-                    headers: { 'X-API-Key': SCAN_KEY }
-                })
-                const data = await res.json()
-                scanAgents = data.items || []
+                feedbackStats = await getAllFeedbackStats()
             } catch (e) {
-                console.warn('8004scan fetch failed, using base scores:', e)
+                console.warn('Feedback stats fetch failed:', e)
             }
 
             const list = []
@@ -435,14 +500,10 @@ function App() {
                 const txHash = agent.tx_hash || ''
                 const status = agent.status || 'pending'
 
-                // Match with 8004scan data by name
-                const scanMatch = scanAgents.find(s =>
-                    s.name && s.name.toLowerCase() === name.toLowerCase()
-                )
-
-                const totalFeedbacks = scanMatch?.total_feedbacks || 0
-                const avgScore = scanMatch?.average_score || 0
-                const tokenId = scanMatch?.token_id || null
+                // Get feedback data from Supabase
+                const fbStats = feedbackStats[name] || { count: 0, total: 0 }
+                const totalFeedbacks = fbStats.count
+                const avgScore = totalFeedbacks > 0 ? fbStats.total / totalFeedbacks : 0
 
                 // Calculate score: base 1200 + reputation adjustments
                 const score = 1200 + Math.round(avgScore * 100) + (totalFeedbacks * 10)
@@ -457,17 +518,17 @@ function App() {
                 list.push({
                     id,
                     name,
-                    description: scanMatch?.description || '',
+                    description: '',
                     score,
                     tier,
                     delta,
                     vouched: avgScore > 0 ? avgScore : 0,
                     reviews: totalFeedbacks,
-                    owner: scanMatch?.owner_address || '',
+                    owner: '',
                     agentType: agentTypeVal,
                     webpageUrl: webpageUrlVal,
                     txHash,
-                    tokenId,
+                    agentId: agent.agent_id || null,
                     status,
                     chainId: 143
                 })
@@ -523,12 +584,13 @@ function App() {
         if (!moltbookApiKey?.startsWith('moltbook_')) { alert('Invalid API Key'); return }
         setLoading(true)
         try {
-            // Submit to Supabase registration queue with agent name
-            const regId = await submitRegistration(moltbookApiKey, agentName.trim(), agentType, webpageUrl)
+            // Submit to Supabase registration queue with agent name and ID
+            const regId = await submitRegistration(moltbookApiKey, agentName.trim(), agentType, webpageUrl, agentId.trim() || null)
             setRegistrationId(regId)
             setRegistrationStatus({ status: 'pending', agent_name: agentName.trim() })
             setMoltbookApiKey('')
             setAgentName('')
+            setAgentId('')
             setWebpageUrl('')
             addActivity(`ERC-8004 registration queued for ${agentName.trim()}`)
             // Reload agents list
@@ -652,6 +714,7 @@ function App() {
                     ) : agents.map((a, i) => (
                         <div key={a.id} className="agent-card" onClick={() => setSelectedAgent(a)}>
                             <div className="ac-rank">#{i + 1}</div>
+                            {a.agentId && <div style={{ position: 'absolute', top: '16px', right: '60px', fontSize: '11px', color: 'var(--accent)', fontWeight: 600 }}>ID: {a.agentId}</div>}
                             <div className="ac-header">
                                 <div className={`ac-avatar ${a.name === 'EllaSharp' ? 'ella-heartbeat' : ''}`}>{a.name.charAt(0)}</div>
                                 <div className="ac-info">
@@ -684,6 +747,7 @@ function App() {
                                 <button onClick={submitToQueue} disabled={loading}>{loading ? '...' : 'REGISTER'}</button>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
+                                <input type="text" placeholder="Agent ID (ERC-8004 NFT #)" value={agentId} onChange={(e) => setAgentId(e.target.value)} style={{ flex: '0 0 180px', padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px' }} />
                                 <select value={agentType} onChange={(e) => setAgentType(e.target.value)} style={{ flex: '0 0 140px', padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px' }}>
                                     {AGENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                 </select>
@@ -704,32 +768,7 @@ function App() {
                 <div className="footer-right">Monad Mainnet</div>
             </footer>
 
-            {selectedAgent && (
-                <div className="modal-overlay" onClick={() => setSelectedAgent(null)}>
-                    <div className="modal" onClick={e => e.stopPropagation()}>
-                        <button className="modal-close" onClick={() => setSelectedAgent(null)}>×</button>
-                        <div className={`modal-avatar ${selectedAgent.name === 'EllaSharp' ? 'ella-heartbeat' : ''}`}>{selectedAgent.name.charAt(0)}</div>
-                        <h3>{selectedAgent.name}</h3>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
-                            <span className={`modal-tier ${selectedAgent.tier}`}>{getTierLabel(selectedAgent.tier)}</span>
-                            {selectedAgent.agentType && <span style={{ fontSize: '11px', padding: '5px 12px', fontWeight: 600, letterSpacing: '0.05em', background: `${getTypeColor(selectedAgent.agentType)}20`, color: getTypeColor(selectedAgent.agentType) }}>{getTypeLabel(selectedAgent.agentType)}</span>}
-                        </div>
-                        <div className="modal-score">{selectedAgent.score}</div>
-                        <div className="modal-stats">
-                            <div><strong>{selectedAgent.reviews}</strong><span>Feedback</span></div>
-                            <div><strong>#{agents.findIndex(a => a.id === selectedAgent.id) + 1}</strong><span>Rank</span></div>
-                        </div>
-                        <div className="modal-contracts">
-                            <p>Owner: {selectedAgent.owner ? `${selectedAgent.owner.slice(0, 6)}...${selectedAgent.owner.slice(-4)}` : 'Unknown'}</p>
-                            <p>Agent ID: {selectedAgent.id}</p>
-                            {selectedAgent.description && <p>Description: {selectedAgent.description}</p>}
-                        </div>
-                        {selectedAgent.webpageUrl && (
-                            <a href={selectedAgent.webpageUrl} target="_blank" rel="noopener" className="btn-primary" style={{ display: 'inline-block', marginTop: '16px', textDecoration: 'none', fontSize: '12px' }}>Visit Agent →</a>
-                        )}
-                    </div>
-                </div>
-            )}
+            {selectedAgent && <AgentModal agent={selectedAgent} agents={agents} onClose={() => setSelectedAgent(null)} getTierLabel={getTierLabel} getTypeLabel={getTypeLabel} getTypeColor={getTypeColor} />}
         </div>
     )
 }
