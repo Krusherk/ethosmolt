@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { submitRegistration, watchRegistration, getAllAgents, getAllFeedbackStats, getFeedbacksForAgent } from './supabase'
+import { getAll8004Stats, getAgentFeedbacks as get8004Feedbacks } from './scan8004'
 import './index.css'
 
 // ERC-8004 Official Contracts (Monad Mainnet)
@@ -475,18 +476,26 @@ function App() {
         setActivityFeed(prev => [{ id: Date.now(), text }, ...prev].slice(0, 5))
     }
 
-    // Load agents from Supabase, enriched with Supabase feedback data
+    // Load agents from Supabase, enriched with 8004scan + Supabase feedback data
     const loadAgents = async () => {
         setLoadingAgents(true)
         try {
             const registeredAgents = await getAllAgents()
 
-            // Fetch feedback stats from Supabase
+            // Fetch feedback stats from Supabase (for text comments)
             let feedbackStats = {}
             try {
                 feedbackStats = await getAllFeedbackStats()
             } catch (e) {
-                console.warn('Feedback stats fetch failed:', e)
+                console.warn('Supabase feedback stats fetch failed:', e)
+            }
+
+            // Fetch 8004scan data for on-chain review counts
+            let scanStats = {}
+            try {
+                scanStats = await getAll8004Stats()
+            } catch (e) {
+                console.warn('8004scan fetch failed:', e)
             }
 
             const list = []
@@ -499,11 +508,19 @@ function App() {
                 const webpageUrlVal = agent.webpage_url || ''
                 const txHash = agent.tx_hash || ''
                 const status = agent.status || 'pending'
+                const agentTokenId = agent.agent_id || null
 
-                // Get feedback data from Supabase
+                // Get Supabase feedback data (text comments)
                 const fbStats = feedbackStats[name] || { count: 0, total: 0 }
-                const totalFeedbacks = fbStats.count
-                const avgScore = totalFeedbacks > 0 ? fbStats.total / totalFeedbacks : 0
+
+                // Get 8004scan on-chain data (review counts)
+                const scan = agentTokenId ? (scanStats[agentTokenId] || null) : null
+                const scanFeedbacks = scan ? scan.totalFeedbacks : 0
+                const scanScore = scan ? scan.totalScore : 0
+
+                // Combine: use 8004scan review count if available, else Supabase
+                const totalFeedbacks = scanFeedbacks > 0 ? scanFeedbacks : fbStats.count
+                const avgScore = scanScore > 0 ? scanScore : (fbStats.count > 0 ? fbStats.total / fbStats.count : 0)
 
                 // Calculate score: base 1200 + reputation adjustments
                 const score = 1200 + Math.round(avgScore * 100) + (totalFeedbacks * 10)
@@ -518,7 +535,7 @@ function App() {
                 list.push({
                     id,
                     name,
-                    description: '',
+                    description: scan ? scan.description : '',
                     score,
                     tier,
                     delta,
@@ -528,9 +545,11 @@ function App() {
                     agentType: agentTypeVal,
                     webpageUrl: webpageUrlVal,
                     txHash,
-                    agentId: agent.agent_id || null,
+                    agentId: agentTokenId,
                     status,
-                    chainId: 143
+                    chainId: 143,
+                    isVerified: scan ? scan.isVerified : false,
+                    scanData: scan
                 })
             }
 
