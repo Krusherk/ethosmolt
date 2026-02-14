@@ -8,6 +8,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 const RPC = process.env.RPC_URL || "https://rpc.monad.xyz"
 const PK = process.env.PRIVATE_KEY
 
+// 8004scan API
+const SCAN_API = 'https://www.8004scan.io/api/v1'
+const SCAN_KEY = '8004_goX1jSjDTgxVDdXwGSxm5L_5RV8yKlI7_77f8f10a'
+
 if (!PK) {
   console.error("❌ PRIVATE_KEY not set! Worker cannot register agents on-chain.")
   console.error("Set PRIVATE_KEY env var with a funded Monad wallet.")
@@ -31,7 +35,7 @@ const provider = new ethers.JsonRpcProvider(RPC)
 const wallet = new ethers.Wallet(PK, provider)
 const contract = new ethers.Contract(IDENTITY, ABI, wallet)
 
-console.log("🦞 MoltEthos Worker started (Supabase + ERC-8004)")
+console.log("🦞 MoltEthos Worker started (Supabase + ERC-8004 + 8004scan)")
 console.log(`   Wallet: ${wallet.address}`)
 console.log(`   RPC: ${RPC}`)
 console.log(`   Contract: ${IDENTITY}`)
@@ -50,12 +54,66 @@ const updateRegistration = async (id, originalData, updates) => {
     agent_type: originalData.agent_type,
     webpage_url: originalData.webpage_url,
     created_at: originalData.created_at,
+    agent_id: originalData.agent_id,
     ...updates
   })
   if (error) console.error('Update error:', error)
 }
 
-// Poll Supabase for pending registrations
+// ===== 8004scan Data Sync =====
+// Fetches on-chain data from 8004scan and stores in Supabase scan_cache table
+const sync8004Data = async () => {
+  try {
+    console.log('📡 Syncing 8004scan data...')
+    const res = await fetch(`${SCAN_API}/agents?chainId=monad&limit=200`, {
+      headers: {
+        'X-Access-Token': SCAN_KEY,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!res.ok) {
+      console.warn(`8004scan API returned ${res.status}`)
+      return
+    }
+
+    const data = await res.json()
+    const agents = data.items || []
+    console.log(`   Found ${agents.length} agents on 8004scan`)
+
+    // Upsert scan data into scan_cache table
+    for (const agent of agents) {
+      const row = {
+        token_id: agent.token_id,
+        chain_id: agent.chain_id,
+        name: agent.name || '',
+        description: agent.description || '',
+        total_feedbacks: agent.total_feedbacks || 0,
+        total_score: agent.total_score || 0,
+        average_score: agent.average_score || 0,
+        is_verified: agent.is_verified || false,
+        star_count: agent.star_count || 0,
+        image_url: agent.image_url || null,
+        owner_address: agent.owner_address || '',
+        agent_wallet: agent.agent_wallet || '',
+        updated_at: new Date().toISOString()
+      }
+
+      // Try delete + insert (same pattern as registrations)
+      await supabase.from('scan_cache').delete().eq('token_id', agent.token_id)
+      const { error } = await supabase.from('scan_cache').insert(row)
+      if (error && !error.message.includes('duplicate')) {
+        console.warn(`   scan_cache error for token ${agent.token_id}:`, error.message)
+      }
+    }
+
+    console.log(`✓ Synced ${agents.length} agents from 8004scan`)
+  } catch (e) {
+    console.error('8004scan sync error:', e.message)
+  }
+}
+
+// ===== Registration Processing =====
 const processPending = async () => {
   try {
     const { data: pending, error } = await supabase
@@ -170,9 +228,15 @@ const processPending = async () => {
   }
 }
 
-// Poll every 30 seconds
+// ===== Schedules =====
+
+// Process pending registrations every 30s
 setInterval(processPending, 30000)
-processPending() // Initial check
+processPending()
+
+// Sync 8004scan data every 5 minutes
+setInterval(sync8004Data, 5 * 60 * 1000)
+sync8004Data() // Initial sync
 
 // Keep alive
 setInterval(() => console.log('💓 Worker alive'), 60000)

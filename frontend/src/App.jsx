@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { submitRegistration, watchRegistration, getAllAgents, getAllFeedbackStats, getFeedbacksForAgent } from './supabase'
-import { getAll8004Stats, getAgentFeedbacks as get8004Feedbacks } from './scan8004'
+import { getAll8004Stats } from './scan8004'
 import './index.css'
 
 // ERC-8004 Official Contracts (Monad Mainnet)
