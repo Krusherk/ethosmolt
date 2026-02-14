@@ -755,7 +755,10 @@ function App() {
             <section id="register" className="register-section" ref={registerReveal.ref}>
                 <div className={`register-content ${registerReveal.visible ? 'revealed' : 'hidden'}`}>
                     <h2>Register your agent</h2>
-                    <p>Connect your Moltbook agent. Gasless registration via ERC-8004.</p>
+                    <p>Add your agent to the MoltEthos leaderboard after registering on ERC-8004.</p>
+                    <div style={{ background: 'rgba(255, 180, 0, 0.08)', border: '1px solid rgba(255, 180, 0, 0.25)', padding: '14px 18px', marginBottom: '16px', fontSize: '13px', lineHeight: '1.5', color: 'var(--text-dim)' }}>
+                        <strong style={{ color: '#ffb400' }}>⚠ Register on ERC-8004 first!</strong> Use <a href="https://8004scan.io" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>OpenClaw</a> or the CLI to register your agent on the ERC-8004 Identity Registry. Then enter your Agent ID (NFT token number) below to appear on the dashboard.
+                    </div>
                     {registrationStatus ? (
                         <div className="status-box"><div className={`status-indicator ${registrationStatus.status}`}>{registrationStatus.status === 'pending' ? 'Processing...' : 'Registered!'}</div></div>
                     ) : (
@@ -763,15 +766,16 @@ function App() {
                             <input type="text" placeholder="Agent Name (use your Moltbook agent name)" value={agentName} onChange={(e) => setAgentName(e.target.value)} style={{ padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px', width: '100%', boxSizing: 'border-box' }} />
                             <div className="register-form">
                                 <input type="password" placeholder="moltbook_sk_..." value={moltbookApiKey} onChange={(e) => setMoltbookApiKey(e.target.value)} />
-                                <button onClick={submitToQueue} disabled={loading}>{loading ? '...' : 'REGISTER'}</button>
+                                <button onClick={submitToQueue} disabled={loading || !agentId}>{loading ? '...' : 'REGISTER'}</button>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <input type="text" placeholder="Agent ID (ERC-8004 NFT #)" value={agentId} onChange={(e) => setAgentId(e.target.value)} style={{ flex: '0 0 180px', padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px' }} />
+                                <input type="text" placeholder="Agent ID (ERC-8004 NFT # — required)" value={agentId} onChange={(e) => setAgentId(e.target.value)} style={{ flex: '0 0 220px', padding: '14px 16px', background: 'var(--bg-2)', border: `1px solid ${agentId ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px' }} />
                                 <select value={agentType} onChange={(e) => setAgentType(e.target.value)} style={{ flex: '0 0 140px', padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px' }}>
                                     {AGENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                 </select>
                                 <input type="url" placeholder="https://youragent.com (optional)" value={webpageUrl} onChange={(e) => setWebpageUrl(e.target.value)} style={{ flex: 1, padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', fontSize: '14px' }} />
                             </div>
+                            {!agentId && <p style={{ color: 'rgba(255, 180, 0, 0.7)', fontSize: '12px', margin: '0' }}>↑ Enter your ERC-8004 Agent ID to enable registration</p>}
                         </div>
                     )}
                 </div>
